@@ -1,7 +1,7 @@
 # Fork FlakeHub Notes
 
 This fork carries internal-only wiring for downstream consumers such as
-`Jesssullivan/cmux`.
+`Jesssullivan/cmux` and `tinyland-inc/rockies`.
 
 ## Goals
 
@@ -9,6 +9,8 @@ This fork carries internal-only wiring for downstream consumers such as
 - let downstream flakes consume the fork via a stable FlakeHub URL
 - expose `lib.aarch64-linux` for multi-arch consumers while keeping upstream
   test coverage unchanged
+- publish the Rocky `10_1` harness surface so downstream VM-preflight and
+  package-test lanes do not have to rely on unpublished local branch state
 
 ## Publishing
 
@@ -25,7 +27,7 @@ The fork publishes through
 
 ## Downstream Usage
 
-Example input for `cmux`:
+Example input for a downstream flake consumer such as `cmux`:
 
 ```nix
 {
@@ -39,3 +41,6 @@ Example input for `cmux`:
 - the fork still exports `checks` only for `x86_64-linux`
 - Fedora test coverage in-tree is still x86_64-oriented, so enabling
   `checks.aarch64-linux` should be a separate change
+- `rockies` still treats the shared GitHub flake surface as primary for the
+  Budgie display-persistence VM-preflight lane, with FlakeHub as an optional
+  publication surface rather than a hard dependency

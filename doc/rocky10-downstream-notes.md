@@ -1,7 +1,7 @@
-# Rocky 10 Notes For cmux
+# Rocky 10 Notes For Downstream Consumers
 
-These notes are for downstream package-test consumers of this fork, especially
-`Jesssullivan/cmux`.
+These notes are for downstream package-test and VM-harness consumers of this
+fork, especially `Jesssullivan/cmux` and `tinyland-inc/rockies`.
 
 ## Release Shape
 
@@ -56,7 +56,7 @@ image state until we explicitly enable more repositories.
 - EPEL 10 is versioned by EL10 minor-release streams, so package availability
   can differ between `10.0`, `10.1`, and the leading Stream-backed branch
 
-## Testing Implications For cmux
+## Testing Implications For Downstream Consumers
 
 - separate "RPM install works" from "desktop/browser stack works"
 - treat Rocky 10 as terminal-first until direct runtime proof says otherwise
@@ -66,6 +66,9 @@ image state until we explicitly enable more repositories.
   - keep the base-image path minimal when validating first-party RPM install
 - keep Fedora 42 and Rocky 10 as distinct lanes rather than assuming one can
   stand in for the other
+- for `rockies`, keep the VM-preflight lane honest about what the published
+  harness surface exposes today instead of assuming local branch state has
+  already been promoted
 
 ## Source Pointers
 
