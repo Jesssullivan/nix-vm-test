@@ -1,0 +1,25 @@
+name: Publish Fork To FlakeHub
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  flakehub-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: DeterminateSystems/determinate-nix-action@v3
+      - uses: DeterminateSystems/flakehub-push@main
+        with:
+          repository: Jesssullivan/nix-vm-test
+          name: Jesssullivan/nix-vm-test
+          rolling: true
+          visibility: unlisted
+          include-output-paths: true
