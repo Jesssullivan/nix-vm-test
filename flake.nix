@@ -7,14 +7,21 @@
 
   outputs = { self, nixpkgs }:
     let
-      system = "x86_64-linux";
-      pkgs = import nixpkgs {
+      lib = nixpkgs.lib;
+      systemsWithLib = [
+        "x86_64-linux"
+        "aarch64-linux"
+      ];
+      forAllLibSystems = f: lib.genAttrs systemsWithLib f;
+      mkPkgs = system: import nixpkgs {
         overlays = [ self.overlays.default ];
         localSystem = system;
       };
+      system = "x86_64-linux";
+      pkgs = mkPkgs system;
     in
     {
-      lib.${system} = pkgs.testers.nonNixOSDistros;
+      lib = forAllLibSystems (system: (mkPkgs system).testers.nonNixOSDistros);
 
       checks.${system} = import ./tests {
         package = pkgs.testers.nonNixOSDistros;

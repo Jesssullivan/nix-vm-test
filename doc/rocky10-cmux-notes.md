@@ -1,0 +1,74 @@
+# Rocky 10 Notes For cmux
+
+These notes are for downstream package-test consumers of this fork, especially
+`Jesssullivan/cmux`.
+
+## Release Shape
+
+- Rocky Linux 10.0 GA date: 2025-06-11
+- general support through 2030-05-31
+- security support through 2035-05-31
+- `x86_64` now means `x86-64-v3` baseline, not older `x86-64-v2` hardware
+- fresh installs only for major-version adoption; no supported in-place major
+  upgrade path from Rocky 9
+
+## Installer And Base System Facts
+
+- the installer disables the root account by default and expects an
+  administrative user with sudo privileges
+- third-party repositories are not added in the graphical installer anymore;
+  use `inst.addrepo` or Kickstart if install-time repo changes matter
+- Wayland is the default graphical stack, with Xwayland for legacy X11 clients
+
+## Repository Surface
+
+Rocky 10 ships a larger RHEL-like repository surface than the narrow cloud image
+footprint suggests. Current public trees include:
+
+- `BaseOS`
+- `AppStream`
+- `CRB`
+- `extras`
+- `plus`
+- `devel`
+- `HighAvailability`
+- `NFV`
+- `RT`
+- `SAP`
+- `SAPHANA`
+
+For package tests this matters because a fresh cloud image only proves the base
+image state until we explicitly enable more repositories.
+
+## Package Management Changes
+
+- Rocky 10 uses the DNF5 generation and deprecates module workflows
+- `dnf module` should not be a planning assumption for EL10 package tests
+- prefer `dnf repoquery` and ordinary `dnf install` flows with explicit package
+  names
+- RPM is 4.19, which is relevant for spec/build tooling behavior
+
+## EPEL / CRB Implications
+
+- `CRB` exists on Rocky 10 but is disabled by default
+- many EPEL packages depend on `CRB`, so enabling EPEL without enabling `CRB`
+  first is a bad default assumption
+- EPEL 10 is versioned by EL10 minor-release streams, so package availability
+  can differ between `10.0`, `10.1`, and the leading Stream-backed branch
+
+## Testing Implications For cmux
+
+- separate "RPM install works" from "desktop/browser stack works"
+- treat Rocky 10 as terminal-first until direct runtime proof says otherwise
+- prefer explicit repo setup in tests:
+  - enable `CRB` only when the test actually needs it
+  - add `epel-release` only when the package/runtime dependency chain needs it
+  - keep the base-image path minimal when validating first-party RPM install
+- keep Fedora 42 and Rocky 10 as distinct lanes rather than assuming one can
+  stand in for the other
+
+## Source Pointers
+
+- https://docs.rockylinux.org/ja/release_notes/10_0/
+- https://wiki.rockylinux.org/rocky/repo/
+- https://communityblog.fedoraproject.org/epel-10-is-now-available/
