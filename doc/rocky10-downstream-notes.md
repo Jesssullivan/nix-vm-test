@@ -70,6 +70,16 @@ image state until we explicitly enable more repositories.
   harness surface exposes today instead of assuming local branch state has
   already been promoted
 
+## Current Fork Proof Surface
+
+- the fork now runs a bounded Rocky 10.1 VM smoke on the `nix-vm-test-kvm`
+  lane through `.github/workflows/kvm-soak.yml`
+- that proof is still terminal-first: it demonstrates the published
+  `rocky-10_1-multi-user-test` harness boots and reaches `multi-user.target`
+  under KVM
+- it does not yet prove graphical session, display persistence, Budgie, GPU,
+  or broader `rockies` workload maturity
+
 ## Source Pointers
 
 - https://docs.rockylinux.org/ja/release_notes/10_0/
