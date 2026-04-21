@@ -1,0 +1,77 @@
+name: KVM Runner Soak
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  kvm-soak:
+    name: Prove nix-vm-test-kvm runner contract
+    runs-on: nix-vm-test-kvm
+    timeout-minutes: 15
+    steps:
+      - name: Record start time
+        id: timing
+        run: echo "start=$(date +%s%N)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v6
+      - uses: DeterminateSystems/determinate-nix-action@v3
+
+      - name: Verify runner environment
+        run: |
+          echo "Runner: ${{ runner.name }}"
+          echo "OS: ${{ runner.os }}"
+          echo "Environment: ${{ runner.environment }}"
+          uname -a
+
+      - name: Verify /dev/kvm access
+        run: |
+          ls -l /dev/kvm
+          test -c /dev/kvm
+          test -w /dev/kvm
+
+      - name: Verify injected cache contract
+        run: |
+          test -n "${ATTIC_SERVER:-}"
+          test -n "${ATTIC_CACHE:-}"
+          test -n "${BAZEL_REMOTE_CACHE:-}"
+          test -n "${NIX_CONFIG:-}"
+          printf 'ATTIC_SERVER=%s\n' "$ATTIC_SERVER"
+          printf 'ATTIC_CACHE=%s\n' "$ATTIC_CACHE"
+          printf 'BAZEL_REMOTE_CACHE=%s\n' "$BAZEL_REMOTE_CACHE"
+
+      - name: Verify QEMU KVM acceleration
+        run: |
+          nix shell nixpkgs#qemu_kvm -c sh -lc '
+            qemu-system-x86_64 --version
+            qemu-system-x86_64 -accel help | grep -x kvm
+          '
+
+      - name: Verify Rocky 10.1 harness attrs
+        run: |
+          nix eval --json --impure --expr '
+            let flake = builtins.getFlake (toString ./.);
+            in {
+              x86_64_rocky_10_1 = builtins.hasAttr "10_1" flake.lib."x86_64-linux".rocky;
+              aarch64_rocky_10_1 = builtins.hasAttr "10_1" flake.lib."aarch64-linux".rocky;
+            }
+          '
+          nix eval --raw --impure --expr '
+            let flake = builtins.getFlake (toString ./.);
+            in if
+              builtins.hasAttr "10_1" flake.lib."x86_64-linux".rocky
+              && builtins.hasAttr "10_1" flake.lib."aarch64-linux".rocky
+            then "rocky-10.1-harness-ok"
+            else builtins.throw "missing rocky 10_1 harness attrs"
+          '
+
+      - name: Report timing
+        if: always()
+        env:
+          JOB_START: ${{ steps.timing.outputs.start }}
+        run: |
+          END=$(date +%s%N)
+          DURATION_MS=$(( (END - JOB_START) / 1000000 ))
+          echo "### kvm-soak completed in ${DURATION_MS}ms" >> "$GITHUB_STEP_SUMMARY"
