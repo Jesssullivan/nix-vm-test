@@ -122,6 +122,18 @@ image state until we explicitly enable more repositories.
   - it does not prove display persistence, a graphical login manager,
     bare-metal display readiness, GPU acceleration, or broader `rockies`
     workload maturity
+- the fork now also exposes a bounded
+  `rocky-10_1-budgie-display-persistence-test` target intended to publish the
+  first stronger follow-on after Budgie graphical session execution
+- that Budgie display-persistence target is still deliberately bounded:
+  - it reuses the same Rocky 10.1 plus Fedora 44 consumer-repo install path as
+    the first Budgie graphical target
+  - it launches the headless `startbudgielabwc` session twice in the same guest
+    and proves `labwc`, `budgie-session-binary`, and
+    `org.gnome.SessionManager` come back on the relaunch cycle
+  - it does not prove reboot persistence, a graphical login manager,
+    bare-metal display readiness, GPU acceleration, hotplug, mixed-DPI policy,
+    or broader `rockies` workload maturity
 
 ## Source Pointers
 
