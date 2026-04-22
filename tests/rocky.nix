@@ -123,6 +123,11 @@ let
     full_session_target = "rocky-10_1-budgie-graphical-test";
     current_boundary = "generic-rocky-graphical-bootstrap-with-budgie-session-transaction-probe";
   };
+  budgieSessionGateCorePackages = [
+    "budgie-desktop"
+    "budgie-session"
+    "budgie-desktop-services"
+  ];
   budgieSessionGateScript = ''
     #!/usr/bin/env bash
     set -euo pipefail
@@ -354,6 +359,31 @@ let
       vm.succeed("grep -q 'budgie-desktop-services' /tmp/budgie-session-gate-summary.json")
       vm.succeed("grep -q 'labwc' /tmp/budgie-session-gate-summary.json")
       vm.succeed("grep -q 'xdg-desktop-portal-wlr' /tmp/budgie-session-gate-summary.json")
+      vm.succeed("""
+        python3 - <<'PY'
+        import json
+
+        with open("/tmp/budgie-session-gate-summary.json", "r", encoding="utf-8") as handle:
+            summary = json.load(handle)
+
+        expected_missing = set(${builtins.toJSON budgieSessionGateCorePackages})
+        observed_missing = set(summary["transaction_probe"]["missing_packages"])
+
+        if summary["transaction_probe"]["full_session_transaction_ready"]:
+            raise SystemExit("Budgie full-session transaction unexpectedly became ready")
+
+        if summary["descriptor_providers"]:
+            raise SystemExit(
+                f"unexpected Budgie session descriptor providers: {summary['descriptor_providers']}"
+            )
+
+        missing_core = expected_missing - observed_missing
+        if missing_core:
+            raise SystemExit(
+                f"expected core Budgie session packages to remain unresolved, missing check for: {sorted(missing_core)}"
+            )
+        PY
+      """)
       vm.succeed("cat /tmp/budgie-session-gate-summary.json")
       vm.succeed("sed -n '1,120p' /tmp/budgie-session-gate-transaction.log || true")
     '';

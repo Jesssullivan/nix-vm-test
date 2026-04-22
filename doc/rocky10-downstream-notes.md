@@ -101,6 +101,9 @@ image state until we explicitly enable more repositories.
   - it reuses the same generic Rocky graphical bootstrap path
   - it mounts a guest-side Budgie session-gate bundle and records a Budgie
     session transaction probe against the live Rocky 10.1 repo surface
+  - it currently keeps the core Budgie session packages unresolved on the live
+    Rocky 10.1 plus EL10 repo surface instead of pretending a full session is
+    already installable
   - it records session-descriptor expectations for the eventual Budgie session
     target without claiming those descriptors are present today
   - it does not prove a Budgie session, display manager, display persistence,
