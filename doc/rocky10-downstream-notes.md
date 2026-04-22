@@ -94,6 +94,17 @@ image state until we explicitly enable more repositories.
     probe summary inside the guest
   - it does not prove a Budgie session, display manager, display persistence,
     GPU acceleration, or broader `rockies` workload maturity
+- the fork now also exposes a bounded
+  `rocky-10_1-budgie-session-gate-test` target intended to complement
+  downstream Budgie session-gate work
+- that Budgie session-gate target is still deliberately bounded:
+  - it reuses the same generic Rocky graphical bootstrap path
+  - it mounts a guest-side Budgie session-gate bundle and records a Budgie
+    session transaction probe against the live Rocky 10.1 repo surface
+  - it records session-descriptor expectations for the eventual Budgie session
+    target without claiming those descriptors are present today
+  - it does not prove a Budgie session, display manager, display persistence,
+    GPU acceleration, or broader `rockies` workload maturity
 
 ## Source Pointers
 
