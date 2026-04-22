@@ -82,6 +82,22 @@ let
         handle.write("\n")
     PY
   '';
+  budgieGraphicalHarnessWriter = pkgs.lib.escapeShellArg ''
+    from pathlib import Path
+
+    harness_dir = Path("/tmp/budgie-graphical-harness")
+    harness_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+    (harness_dir / "manifest.json").write_text(
+        ${builtins.toJSON budgieGraphicalHarnessManifest} + "\n",
+        encoding="utf-8",
+    )
+    script_path = harness_dir / "run-harness.sh"
+    script_path.write_text(
+        ${builtins.toJSON budgieGraphicalHarnessScript},
+        encoding="utf-8",
+    )
+    script_path.chmod(0o755)
+  '';
   budgieSessionGateManifest = builtins.toJSON {
     target = "rocky-10_1-budgie-session-gate-test";
     kind = "budgie-session-gate";
@@ -228,6 +244,22 @@ let
         handle.write(transaction_output)
     PY
   '';
+  budgieSessionGateWriter = pkgs.lib.escapeShellArg ''
+    from pathlib import Path
+
+    gate_dir = Path("/tmp/budgie-session-gate")
+    gate_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+    (gate_dir / "manifest.json").write_text(
+        ${builtins.toJSON budgieSessionGateManifest} + "\n",
+        encoding="utf-8",
+    )
+    script_path = gate_dir / "run-session-gate.sh"
+    script_path.write_text(
+        ${builtins.toJSON budgieSessionGateScript},
+        encoding="utf-8",
+    )
+    script_path.chmod(0o755)
+  '';
   multiUserTest = runner: (runner {
     sharedDirs = {};
     testScript = ''
@@ -260,16 +292,7 @@ let
     '' + graphicalRuntimeSetup + ''
       vm.succeed("command -v python3")
       vm.succeed("dnf repoquery --help >/dev/null")
-      vm.succeed("""
-        install -d -m 700 /tmp/budgie-graphical-harness
-        cat > /tmp/budgie-graphical-harness/manifest.json <<'EOF'
-        ${budgieGraphicalHarnessManifest}
-        EOF
-        cat > /tmp/budgie-graphical-harness/run-harness.sh <<'EOF'
-        ${budgieGraphicalHarnessScript}
-        EOF
-        chmod +x /tmp/budgie-graphical-harness/run-harness.sh
-      """)
+      vm.succeed("python3 -c ${budgieGraphicalHarnessWriter}")
       vm.succeed("test -f /tmp/budgie-graphical-harness/manifest.json")
       vm.succeed("test -x /tmp/budgie-graphical-harness/run-harness.sh")
       vm.succeed("grep -q 'budgie-session' /tmp/budgie-graphical-harness/manifest.json")
@@ -300,16 +323,7 @@ let
     '' + graphicalRuntimeSetup + ''
       vm.succeed("command -v python3")
       vm.succeed("dnf repoquery --help >/dev/null")
-      vm.succeed("""
-        install -d -m 700 /tmp/budgie-session-gate
-        cat > /tmp/budgie-session-gate/manifest.json <<'EOF'
-        ${budgieSessionGateManifest}
-        EOF
-        cat > /tmp/budgie-session-gate/run-session-gate.sh <<'EOF'
-        ${budgieSessionGateScript}
-        EOF
-        chmod +x /tmp/budgie-session-gate/run-session-gate.sh
-      """)
+      vm.succeed("python3 -c ${budgieSessionGateWriter}")
       vm.succeed("test -f /tmp/budgie-session-gate/manifest.json")
       vm.succeed("test -x /tmp/budgie-session-gate/run-session-gate.sh")
       vm.succeed("grep -q 'budgie-desktop' /tmp/budgie-session-gate/manifest.json")
