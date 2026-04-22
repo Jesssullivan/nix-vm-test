@@ -22,6 +22,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: rocky-kvm-soak-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
 jobs:
   rocky-budgie-graphical-harness-soak:
     name: Prove Rocky 10.1 Budgie graphical harness target

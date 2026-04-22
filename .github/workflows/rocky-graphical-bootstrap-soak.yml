@@ -22,6 +22,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: rocky-kvm-soak-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
 jobs:
   rocky-graphical-bootstrap-soak:
     name: Prove Rocky 10.1 graphical bootstrap target
