@@ -27,18 +27,15 @@ let
       vm.succeed("command -v xwfb-run")
       vm.succeed("install -d -m 700 /tmp/graphical-runtime")
       vm.succeed("""
-        cat >/tmp/run-graphical-bootstrap.sh <<'EOF'
-        #!/bin/bash
-        set -euo pipefail
-        export NO_AT_BRIDGE=1
-        export XDG_RUNTIME_DIR=/tmp/graphical-runtime
-        export GSETTINGS_BACKEND=memory
-        dbus-run-session -- \
-          xwfb-run -c mutter -- \
-          bash -lc 'xprop -root > /tmp/graphical-bootstrap-root-window.txt'
-        EOF
-        chmod +x /tmp/run-graphical-bootstrap.sh
-        timeout 180 /tmp/run-graphical-bootstrap.sh
+        timeout 180 bash -lc '
+          set -euo pipefail
+          export NO_AT_BRIDGE=1
+          export XDG_RUNTIME_DIR=/tmp/graphical-runtime
+          export GSETTINGS_BACKEND=memory
+          dbus-run-session -- \
+            xwfb-run -c mutter -- \
+            bash -lc "xprop -root > /tmp/graphical-bootstrap-root-window.txt"
+        '
       """)
       vm.succeed("test -s /tmp/graphical-bootstrap-root-window.txt")
     '';
