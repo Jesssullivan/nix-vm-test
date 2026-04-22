@@ -95,11 +95,12 @@ let
       )
     ''
   }";
-  budgieGraphicalSessionLaunchCommand = builtins.toJSON ''
+  budgieGraphicalSessionScript = ''
+    #!/usr/bin/env bash
     set -euo pipefail
 
-    session_log_path="$BUDGIE_GRAPHICAL_SESSION_LOG_PATH"
-    session_manager_path="$BUDGIE_GRAPHICAL_SESSION_MANAGER_PATH"
+    session_log_path="''${1:?session log path required}"
+    session_manager_path="''${2:?session manager path required}"
 
     export XDG_RUNTIME_DIR=/tmp/budgie-graphical-runtime
     export WLR_BACKENDS=headless
@@ -215,9 +216,9 @@ let
 
     install -d -m 700 /tmp/budgie-graphical-runtime
 
-    export BUDGIE_GRAPHICAL_SESSION_LOG_PATH="$session_log_path"
-    export BUDGIE_GRAPHICAL_SESSION_MANAGER_PATH="$session_manager_path"
-    dbus-run-session -- bash -lc ${budgieGraphicalSessionLaunchCommand}
+    session_script_path="/tmp/budgie-graphical/run-session.sh"
+    test -x "$session_script_path"
+    dbus-run-session -- "$session_script_path" "$session_log_path" "$session_manager_path"
 
     python3 - "$manifest_path" "$summary_path" "$install_log_path" "$session_log_path" "$session_manager_path" <<'PY'
     import json
@@ -334,6 +335,12 @@ let
         encoding="utf-8",
     )
     script_path.chmod(0o755)
+    session_script_path = harness_dir / "run-session.sh"
+    session_script_path.write_text(
+        ${builtins.toJSON budgieGraphicalSessionScript},
+        encoding="utf-8",
+    )
+    session_script_path.chmod(0o755)
   '';
   budgieGraphicalWriteCommand =
     builtins.toJSON "python3 -c ${budgieGraphicalWriter}";
