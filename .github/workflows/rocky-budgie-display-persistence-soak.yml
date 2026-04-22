@@ -1,0 +1,121 @@
+name: Rocky Budgie Display Persistence Soak
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/rocky-budgie-display-persistence-soak.yml"
+      - "doc/rocky10-downstream-notes.md"
+      - "flake.nix"
+      - "rocky/**"
+      - "tests/default.nix"
+      - "tests/rocky.nix"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/rocky-budgie-display-persistence-soak.yml"
+      - "doc/rocky10-downstream-notes.md"
+      - "flake.nix"
+      - "rocky/**"
+      - "tests/default.nix"
+      - "tests/rocky.nix"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rocky-budgie-display-persistence-soak:
+    name: Prove Rocky 10.1 Budgie display-persistence target
+    runs-on: nix-vm-test-kvm
+    timeout-minutes: 75
+    steps:
+      - name: Record start time
+        id: timing
+        run: echo "start=$(date +%s%N)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v6
+      - uses: DeterminateSystems/determinate-nix-action@v3
+
+      - name: Verify runner environment
+        run: |
+          echo "Runner: ${{ runner.name }}"
+          echo "OS: ${{ runner.os }}"
+          echo "Environment: ${{ runner.environment }}"
+          uname -a
+
+      - name: Verify /dev/kvm access
+        run: |
+          ls -l /dev/kvm
+          test -c /dev/kvm
+          test -w /dev/kvm
+
+      - name: Verify injected cache contract
+        run: |
+          test -n "${ATTIC_SERVER:-}"
+          test -n "${ATTIC_CACHE:-}"
+          test -n "${BAZEL_REMOTE_CACHE:-}"
+          test -n "${NIX_CONFIG:-}"
+          printf 'ATTIC_SERVER=%s\n' "$ATTIC_SERVER"
+          printf 'ATTIC_CACHE=%s\n' "$ATTIC_CACHE"
+          printf 'BAZEL_REMOTE_CACHE=%s\n' "$BAZEL_REMOTE_CACHE"
+
+      - name: Verify QEMU KVM acceleration
+        run: |
+          nix shell --inputs-from . nixpkgs#qemu_kvm -c sh -lc '
+            qemu-system-x86_64 --version
+            qemu-system-x86_64 -accel help | grep -x kvm
+          '
+
+      - name: Verify Rocky 10.1 Budgie display-persistence attrs
+        run: |
+          nix eval --json --impure --expr '
+            let
+              flake = builtins.getFlake (toString ./.);
+            in {
+              x86_64_rocky_10_1 = builtins.hasAttr "10_1" flake.lib."x86_64-linux".rocky;
+              graphical_bootstrap =
+                builtins.hasAttr "rocky-10_1-graphical-bootstrap-test"
+                flake.checks."x86_64-linux";
+              budgie_graphical_harness =
+                builtins.hasAttr "rocky-10_1-budgie-graphical-harness-test"
+                flake.checks."x86_64-linux";
+              budgie_session_gate =
+                builtins.hasAttr "rocky-10_1-budgie-session-gate-test"
+                flake.checks."x86_64-linux";
+              budgie_graphical =
+                builtins.hasAttr "rocky-10_1-budgie-graphical-test"
+                flake.checks."x86_64-linux";
+              budgie_display_persistence =
+                builtins.hasAttr "rocky-10_1-budgie-display-persistence-test"
+                flake.checks."x86_64-linux";
+            }
+          '
+          nix eval --raw --impure --expr '
+            let
+              flake = builtins.getFlake (toString ./.);
+            in if
+              builtins.hasAttr "10_1" flake.lib."x86_64-linux".rocky
+              && builtins.hasAttr "rocky-10_1-graphical-bootstrap-test" flake.checks."x86_64-linux"
+              && builtins.hasAttr "rocky-10_1-budgie-graphical-harness-test" flake.checks."x86_64-linux"
+              && builtins.hasAttr "rocky-10_1-budgie-session-gate-test" flake.checks."x86_64-linux"
+              && builtins.hasAttr "rocky-10_1-budgie-graphical-test" flake.checks."x86_64-linux"
+              && builtins.hasAttr "rocky-10_1-budgie-display-persistence-test" flake.checks."x86_64-linux"
+            then "rocky-10.1-budgie-display-persistence-ok"
+            else builtins.throw "missing rocky 10_1 budgie display-persistence attrs"
+          '
+
+      - name: Execute Rocky 10.1 Budgie display-persistence smoke
+        run: |
+          nix build -L .#checks.x86_64-linux.rocky-10_1-budgie-display-persistence-test
+          test -e result
+          readlink result
+
+      - name: Report timing
+        if: always()
+        env:
+          JOB_START: ${{ steps.timing.outputs.start }}
+        run: |
+          END=$(date +%s%N)
+          DURATION_MS=$(( (END - JOB_START) / 1000000 ))
+          echo "### rocky-budgie-display-persistence-soak completed in ${DURATION_MS}ms" >> "$GITHUB_STEP_SUMMARY"

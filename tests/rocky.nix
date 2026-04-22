@@ -101,6 +101,8 @@ let
 
     session_log_path="''${1:?session log path required}"
     session_manager_path="''${2:?session manager path required}"
+    labwc_process_path="''${3:-/tmp/budgie-graphical-labwc-processes.txt}"
+    budgie_session_process_path="''${4:-/tmp/budgie-graphical-session-processes.txt}"
 
     export XDG_RUNTIME_DIR=/tmp/budgie-graphical-runtime
     export WLR_BACKENDS=headless
@@ -123,7 +125,7 @@ let
     ready=0
 
     for _ in $(seq 1 60); do
-      if pgrep -x labwc >/dev/null && pgrep -af budgie-session >/tmp/budgie-graphical-session-processes.txt; then
+      if pgrep -x labwc >/dev/null && pgrep -af budgie-session >"$budgie_session_process_path"; then
         if gdbus introspect \
           --session \
           --dest org.gnome.SessionManager \
@@ -137,8 +139,8 @@ let
       sleep 1
     done
 
-    pgrep -a labwc >/tmp/budgie-graphical-labwc-processes.txt || true
-    pgrep -af budgie-session >/tmp/budgie-graphical-session-processes.txt || true
+    pgrep -a labwc >"$labwc_process_path" || true
+    pgrep -af budgie-session >"$budgie_session_process_path" || true
 
     if [ "$ready" -ne 1 ]; then
       sed -n "1,200p" "$session_log_path" >&2 || true
@@ -344,6 +346,294 @@ let
   '';
   budgieGraphicalWriteCommand =
     builtins.toJSON "python3 -c ${budgieGraphicalWriter}";
+  budgieDisplayPersistenceManifest = builtins.toJSON {
+    target = "rocky-10_1-budgie-display-persistence-test";
+    kind = "budgie-display-persistence";
+    predecessor_target = "rocky-10_1-budgie-graphical-test";
+    desktop_package = "budgie-desktop";
+    session_entry = "budgie-session";
+    persistence_service = "budgie-desktop-services";
+    compositor = "labwc";
+    companion_session_package = "labwc-session";
+    portal_backend = "xdg-desktop-portal-wlr";
+    runtime_helpers = [
+      "grim"
+      "slurp"
+      "swaybg"
+      "swayidle"
+      "wlopm"
+    ];
+    package_set = budgieGraphicalPackages;
+    epel_release_rpm =
+      "https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm";
+    fedora_release = "44";
+    fedora_repo_path = "/etc/yum.repos.d/fedora44.repo";
+    session_descriptor_path = "/usr/share/wayland-sessions/budgie-desktop.desktop";
+    session_launcher = "startbudgielabwc";
+    session_manager_bus_name = "org.gnome.SessionManager";
+    session_manager_object_path = "/org/gnome/SessionManager";
+    session_manager_interface = "org.gnome.SessionManager";
+    session_binary = "budgie-session-binary";
+    persistence_cycles = [
+      {
+        name = "initial-launch";
+        session_log_path = "/tmp/budgie-display-persistence/initial-launch-session.log";
+        session_manager_path =
+          "/tmp/budgie-display-persistence/initial-launch-session-manager.txt";
+        labwc_process_path =
+          "/tmp/budgie-display-persistence/initial-launch-labwc-processes.txt";
+        budgie_session_process_path =
+          "/tmp/budgie-display-persistence/initial-launch-session-processes.txt";
+      }
+      {
+        name = "relaunch";
+        session_log_path = "/tmp/budgie-display-persistence/relaunch-session.log";
+        session_manager_path =
+          "/tmp/budgie-display-persistence/relaunch-session-manager.txt";
+        labwc_process_path =
+          "/tmp/budgie-display-persistence/relaunch-labwc-processes.txt";
+        budgie_session_process_path =
+          "/tmp/budgie-display-persistence/relaunch-session-processes.txt";
+      }
+    ];
+    current_boundary =
+      "first-rocky-budgie-display-persistence-via-double-session-relaunch";
+  };
+  budgieDisplayPersistenceAssertionWriter = pkgs.lib.escapeShellArg ''
+    import json
+
+    with open("/tmp/budgie-display-persistence-summary.json", "r", encoding="utf-8") as handle:
+        summary = json.load(handle)
+
+    repo_surface = summary["repo_surface"]
+    package_install = summary["package_install"]
+    persistence_probe = summary["persistence_probe"]
+    cycles = summary["persistence_cycles"]
+
+    if repo_surface["fedora_release"] != "44":
+        raise SystemExit(f"unexpected Fedora consumer release: {repo_surface['fedora_release']}")
+
+    if not repo_surface["consumer_repo_path_exists"]:
+        raise SystemExit("Fedora consumer repo file was not created in the guest")
+
+    if not package_install["transaction_succeeded"]:
+        raise SystemExit("Budgie display-persistence package installation did not succeed")
+
+    if persistence_probe["completed_cycle_count"] != 2:
+        raise SystemExit(
+            f"expected 2 persistence cycles, saw {persistence_probe['completed_cycle_count']}"
+        )
+
+    if not persistence_probe["second_cycle_registered"]:
+        raise SystemExit("second Budgie session cycle did not register org.gnome.SessionManager")
+
+    for cycle in cycles:
+        if not cycle["labwc_running"]:
+            raise SystemExit(f"labwc did not stay up during cycle {cycle['name']}")
+        if not cycle["budgie_session_running"]:
+            raise SystemExit(
+                f"budgie-session did not stay up during cycle {cycle['name']}"
+            )
+        if not cycle["session_manager_registered"]:
+            raise SystemExit(
+                f"org.gnome.SessionManager did not register during cycle {cycle['name']}"
+            )
+  '';
+  budgieDisplayPersistenceAssertionCommand =
+    builtins.toJSON "python3 -c ${budgieDisplayPersistenceAssertionWriter}";
+  budgieDisplayPersistenceScript = ''
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    manifest_path="''${1:?manifest path required}"
+    summary_path="''${2:?summary path required}"
+    install_log_path="''${3:?install log path required}"
+
+    dnf install -y ${builtins.toJSON "https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm"} >/dev/null
+    dnf install -y dnf-plugins-core >/dev/null
+    dnf config-manager --set-enabled crb >/dev/null
+
+    ${fedora44ConsumerRepoWriteCommand}
+
+    dnf install -y --setopt=install_weak_deps=False \
+      ${builtins.concatStringsSep " \\\n      " budgieGraphicalPackages} \
+      >"$install_log_path"
+
+    command -v dbus-run-session >/dev/null
+    command -v gdbus >/dev/null
+    command -v pgrep >/dev/null
+    command -v startbudgielabwc >/dev/null
+    command -v budgie-session >/dev/null
+
+    desktop_file="/usr/share/wayland-sessions/budgie-desktop.desktop"
+    test -f "$desktop_file"
+    grep -q '^Exec=.*/startbudgielabwc$' "$desktop_file"
+
+    install -d -m 700 /tmp/budgie-graphical-runtime
+
+    session_script_path="/tmp/budgie-display-persistence/run-session.sh"
+    test -x "$session_script_path"
+
+    for cycle_name in initial-launch relaunch; do
+      log_path="/tmp/budgie-display-persistence/''${cycle_name}-session.log"
+      manager_path="/tmp/budgie-display-persistence/''${cycle_name}-session-manager.txt"
+      labwc_path="/tmp/budgie-display-persistence/''${cycle_name}-labwc-processes.txt"
+      budgie_path="/tmp/budgie-display-persistence/''${cycle_name}-session-processes.txt"
+
+      dbus-run-session -- \
+        "$session_script_path" \
+        "$log_path" \
+        "$manager_path" \
+        "$labwc_path" \
+        "$budgie_path"
+
+      test -s "$manager_path"
+      sleep 2
+    done
+
+    python3 - "$manifest_path" "$summary_path" "$install_log_path" <<'PY'
+    import json
+    from pathlib import Path
+    import subprocess
+    import sys
+
+    manifest_path, summary_path, install_log_path = sys.argv[1:4]
+
+    with open(manifest_path, "r", encoding="utf-8") as handle:
+        manifest = json.load(handle)
+
+    def read_lines(path: str, limit: int = 80) -> list[str]:
+        file_path = Path(path)
+        if not file_path.exists():
+            return []
+        with file_path.open("r", encoding="utf-8", errors="replace") as handle:
+            return [line.rstrip("\n") for _, line in zip(range(limit), handle)]
+
+    def probe_installed_package(name: str) -> dict:
+        result = subprocess.run(
+            ["rpm", "-q", "--qf", "%{name}-%{version}-%{release}.%{arch}\n", name],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            check=False,
+        )
+        lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+        return {
+            "name": name,
+            "installed": result.returncode == 0,
+            "matches": lines,
+        }
+
+    desktop_file_path = Path(manifest["session_descriptor_path"])
+    exec_line = ""
+    desktop_names_line = ""
+    if desktop_file_path.exists():
+        for line in desktop_file_path.read_text(encoding="utf-8", errors="replace").splitlines():
+            if line.startswith("Exec="):
+                exec_line = line
+            if line.startswith("DesktopNames="):
+                desktop_names_line = line
+
+    installed_package_versions = [
+        probe_installed_package(name) for name in manifest["package_set"]
+    ]
+
+    cycles = []
+    for cycle in manifest["persistence_cycles"]:
+        labwc_processes = read_lines(cycle["labwc_process_path"])
+        budgie_session_processes = read_lines(cycle["budgie_session_process_path"])
+        session_manager_excerpt = read_lines(cycle["session_manager_path"])
+        cycles.append(
+            {
+                "name": cycle["name"],
+                "session_log_path": cycle["session_log_path"],
+                "session_manager_path": cycle["session_manager_path"],
+                "labwc_process_path": cycle["labwc_process_path"],
+                "budgie_session_process_path": cycle["budgie_session_process_path"],
+                "labwc_processes": labwc_processes,
+                "budgie_session_processes": budgie_session_processes,
+                "labwc_running": bool(labwc_processes),
+                "budgie_session_running": any(
+                    "budgie-session-binary" in line or "budgie-session --builtin" in line
+                    for line in budgie_session_processes
+                ),
+                "session_manager_registered": bool(session_manager_excerpt),
+                "session_manager_excerpt": session_manager_excerpt,
+                "session_log_excerpt": read_lines(cycle["session_log_path"]),
+            }
+        )
+
+    summary = {
+        "kind": manifest["kind"],
+        "target": manifest["target"],
+        "predecessor_target": manifest["predecessor_target"],
+        "current_boundary": manifest["current_boundary"],
+        "repo_surface": {
+            "epel_release_rpm": manifest["epel_release_rpm"],
+            "crb_enabled": True,
+            "fedora_release": manifest["fedora_release"],
+            "consumer_repo_path": manifest["fedora_repo_path"],
+            "consumer_repo_path_exists": Path(manifest["fedora_repo_path"]).exists(),
+        },
+        "desktop_file": {
+            "path": manifest["session_descriptor_path"],
+            "exists": desktop_file_path.exists(),
+            "exec_line": exec_line,
+            "desktop_names_line": desktop_names_line,
+        },
+        "package_install": {
+            "packages": manifest["package_set"],
+            "transaction_succeeded": all(
+                probe["installed"] for probe in installed_package_versions
+            ),
+            "installed_package_versions": installed_package_versions,
+            "log_excerpt": read_lines(install_log_path),
+        },
+        "persistence_cycles": cycles,
+        "persistence_probe": {
+            "cycle_names": [cycle["name"] for cycle in cycles],
+            "completed_cycle_count": len(cycles),
+            "second_cycle_registered": (
+                len(cycles) > 1 and cycles[1]["session_manager_registered"]
+            ),
+            "second_cycle_labwc_running": (
+                len(cycles) > 1 and cycles[1]["labwc_running"]
+            ),
+            "second_cycle_budgie_session_running": (
+                len(cycles) > 1 and cycles[1]["budgie_session_running"]
+            ),
+        },
+    }
+
+    with open(summary_path, "w", encoding="utf-8") as handle:
+        json.dump(summary, handle, indent=2)
+        handle.write("\n")
+    PY
+  '';
+  budgieDisplayPersistenceWriter = pkgs.lib.escapeShellArg ''
+    from pathlib import Path
+
+    harness_dir = Path("/tmp/budgie-display-persistence")
+    harness_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+    (harness_dir / "manifest.json").write_text(
+        ${builtins.toJSON budgieDisplayPersistenceManifest} + "\n",
+        encoding="utf-8",
+    )
+    script_path = harness_dir / "run-display-persistence-test.sh"
+    script_path.write_text(
+        ${builtins.toJSON budgieDisplayPersistenceScript},
+        encoding="utf-8",
+    )
+    script_path.chmod(0o755)
+    session_script_path = harness_dir / "run-session.sh"
+    session_script_path.write_text(
+        ${builtins.toJSON budgieGraphicalSessionScript},
+        encoding="utf-8",
+    )
+    session_script_path.chmod(0o755)
+  '';
+  budgieDisplayPersistenceWriteCommand =
+    builtins.toJSON "python3 -c ${budgieDisplayPersistenceWriter}";
   budgieGraphicalHarnessManifest = builtins.toJSON {
     target = "rocky-10_1-budgie-graphical-harness-test";
     kind = "budgie-graphical-harness";
@@ -683,6 +973,43 @@ let
       vm.succeed("sed -n '1,120p' /tmp/budgie-graphical-session.log || true")
     '';
   }).sandboxed;
+  budgieDisplayPersistenceTest = runner: (runner {
+    sharedDirs = {};
+    testScript = ''
+      vm.wait_for_unit("multi-user.target")
+      vm.succeed("command -v python3")
+      vm.succeed(${budgieDisplayPersistenceWriteCommand})
+      vm.succeed("test -f /tmp/budgie-display-persistence/manifest.json")
+      vm.succeed("test -x /tmp/budgie-display-persistence/run-display-persistence-test.sh")
+      vm.succeed("grep -q 'predecessor_target' /tmp/budgie-display-persistence/manifest.json")
+      vm.succeed("""
+        timeout 1200 bash -lc '
+          set -euo pipefail
+          /tmp/budgie-display-persistence/run-display-persistence-test.sh \
+            /tmp/budgie-display-persistence/manifest.json \
+            /tmp/budgie-display-persistence-summary.json \
+            /tmp/budgie-display-persistence-install.log || {
+              status=$?
+              sed -n "1,200p" /tmp/budgie-display-persistence-install.log || true
+              sed -n "1,120p" /tmp/budgie-display-persistence/initial-launch-session.log || true
+              sed -n "1,120p" /tmp/budgie-display-persistence/relaunch-session.log || true
+              exit "$status"
+            }
+        '
+      """)
+      vm.succeed("test -s /tmp/budgie-display-persistence-summary.json")
+      vm.succeed("test -s /tmp/budgie-display-persistence-install.log")
+      vm.succeed("test -s /tmp/budgie-display-persistence/initial-launch-session-manager.txt")
+      vm.succeed("test -s /tmp/budgie-display-persistence/relaunch-session-manager.txt")
+      vm.succeed("grep -q 'rocky-10_1-budgie-graphical-test' /tmp/budgie-display-persistence-summary.json")
+      vm.succeed("grep -q 'org.gnome.SessionManager' /tmp/budgie-display-persistence-summary.json")
+      vm.succeed("grep -q 'relaunch' /tmp/budgie-display-persistence-summary.json")
+      vm.succeed(${budgieDisplayPersistenceAssertionCommand})
+      vm.succeed("cat /tmp/budgie-display-persistence-summary.json")
+      vm.succeed("sed -n '1,120p' /tmp/budgie-display-persistence/initial-launch-session.log || true")
+      vm.succeed("sed -n '1,120p' /tmp/budgie-display-persistence/relaunch-session.log || true")
+    '';
+  }).sandboxed;
   budgieGraphicalHarnessTest = runner: (runner {
     sharedDirs = {};
     testScript = ''
@@ -762,6 +1089,7 @@ runTestOnEveryImage multiUserTest //
 {
   "10_1-graphical-bootstrap-test" = graphicalBootstrapTest lib.rocky."10_1";
   "10_1-budgie-graphical-test" = budgieGraphicalTest lib.rocky."10_1";
+  "10_1-budgie-display-persistence-test" = budgieDisplayPersistenceTest lib.rocky."10_1";
   "10_1-budgie-graphical-harness-test" = budgieGraphicalHarnessTest lib.rocky."10_1";
   "10_1-budgie-session-gate-test" = budgieSessionGateTest lib.rocky."10_1";
 } //
