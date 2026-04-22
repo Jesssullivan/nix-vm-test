@@ -96,8 +96,9 @@ let
           systemctl enable register-nix-paths.service
           systemctl enable backdoor.service
 
-          # lock repositories to the minor version in vault so that
-          # the dnf operations **always** work for first-party repos
+          # lock repositories to the current Rocky minor version on the
+          # official download CDN so that first-party DNF operations stay
+          # deterministic without depending on the mirrorlist path
 
           # safe to do on all repos because you won't find any
           # non-first-party repos on a fresh image from RESF
@@ -106,18 +107,16 @@ let
             sed -i 's@.*mirrorlist=@#mirrorlist=@g' "''${repoFile}" # disable mirrorlist
             sed -i 's@.*baseurl=@baseurl=@g' "''${repoFile}" # switch to fastly CDN
 
-            # `pub/rocky` is for non-EoL, `vault/rocky` is for EoL
-            sed -i 's@$contentdir@vault/rocky@g' "''${repoFile}"
-            sed -i 's@pub/rocky@vault/rocky@g' "''${repoFile}"
-
-            # change `$contentdir` globally
-            sed -i 's@$contentdir@vault/rocky@g' "''${repoFile}"
+            sed -i 's@://dl\\.rockylinux\\.org@://download.rockylinux.org@g' "''${repoFile}"
+            sed -i 's@://download\\.rockylinux\\.org@://download.rockylinux.org@g' "''${repoFile}"
+            sed -i 's@$contentdir@pub/rocky@g' "''${repoFile}"
+            sed -i 's@vault/rocky@pub/rocky@g' "''${repoFile}"
 
             # all this to not pollute the current environment with $VERSION_ID
             (export $(cat /etc/os-release | grep '^VERSION_ID=' | sed -e 's/"//g') && sed -i "s@\$releasever@''${VERSION_ID}@g" "''${repoFile}")
           done
-          # change the value of the `contentdir` DNF variable
-          [ -f /etc/dnf/vars/contentdir ] && sed -i 's@pub/rocky@vault/rocky@g' /etc/dnf/vars/contentdir
+          # pin the `contentdir` DNF variable to the live Rocky CDN path
+          [ -f /etc/dnf/vars/contentdir ] && printf 'pub/rocky\n' > /etc/dnf/vars/contentdir
         '')
 
       ]};
