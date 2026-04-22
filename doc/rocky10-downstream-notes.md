@@ -72,13 +72,19 @@ image state until we explicitly enable more repositories.
 
 ## Current Fork Proof Surface
 
-- the fork now runs a bounded Rocky 10.1 VM smoke on the `nix-vm-test-kvm`
+- the fork runs a bounded Rocky 10.1 VM smoke on the `nix-vm-test-kvm`
   lane through `.github/workflows/kvm-soak.yml`
-- that proof is still terminal-first: it demonstrates the published
+- that proof remains the base terminal-first contract: the published
   `rocky-10_1-multi-user-test` harness boots and reaches `multi-user.target`
   under KVM
-- it does not yet prove graphical session, display persistence, Budgie, GPU,
-  or broader `rockies` workload maturity
+- the fork now also exposes a bounded `rocky-10_1-graphical-bootstrap-test`
+  target intended for a separate KVM soak lane
+- that graphical bootstrap target is still deliberately narrow:
+  - it installs first-party Rocky 10 Xwayland/Wayland userspace at runtime
+  - it proves a headless X11 client can connect through `xwfb-run -c mutter`
+  - it does not prove a graphical login manager, Budgie session,
+    display persistence, GPU acceleration, or broader `rockies` workload
+    maturity
 
 ## Source Pointers
 
