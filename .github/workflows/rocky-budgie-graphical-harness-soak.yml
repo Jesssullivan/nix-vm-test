@@ -60,7 +60,7 @@ jobs:
 
       - name: Verify QEMU KVM acceleration
         run: |
-          nix shell nixpkgs#qemu_kvm -c sh -lc '
+          nix shell --inputs-from . nixpkgs#qemu_kvm -c sh -lc '
             qemu-system-x86_64 --version
             qemu-system-x86_64 -accel help | grep -x kvm
           '
