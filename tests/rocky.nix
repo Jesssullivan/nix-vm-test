@@ -98,6 +98,8 @@ let
     )
     script_path.chmod(0o755)
   '';
+  budgieGraphicalHarnessWriteCommand =
+    builtins.toJSON "python3 -c ${budgieGraphicalHarnessWriter}";
   budgieSessionGateManifest = builtins.toJSON {
     target = "rocky-10_1-budgie-session-gate-test";
     kind = "budgie-session-gate";
@@ -260,6 +262,8 @@ let
     )
     script_path.chmod(0o755)
   '';
+  budgieSessionGateWriteCommand =
+    builtins.toJSON "python3 -c ${budgieSessionGateWriter}";
   multiUserTest = runner: (runner {
     sharedDirs = {};
     testScript = ''
@@ -292,7 +296,7 @@ let
     '' + graphicalRuntimeSetup + ''
       vm.succeed("command -v python3")
       vm.succeed("dnf repoquery --help >/dev/null")
-      vm.succeed("python3 -c ${budgieGraphicalHarnessWriter}")
+      vm.succeed(${budgieGraphicalHarnessWriteCommand})
       vm.succeed("test -f /tmp/budgie-graphical-harness/manifest.json")
       vm.succeed("test -x /tmp/budgie-graphical-harness/run-harness.sh")
       vm.succeed("grep -q 'budgie-session' /tmp/budgie-graphical-harness/manifest.json")
@@ -323,7 +327,7 @@ let
     '' + graphicalRuntimeSetup + ''
       vm.succeed("command -v python3")
       vm.succeed("dnf repoquery --help >/dev/null")
-      vm.succeed("python3 -c ${budgieSessionGateWriter}")
+      vm.succeed(${budgieSessionGateWriteCommand})
       vm.succeed("test -f /tmp/budgie-session-gate/manifest.json")
       vm.succeed("test -x /tmp/budgie-session-gate/run-session-gate.sh")
       vm.succeed("grep -q 'budgie-desktop' /tmp/budgie-session-gate/manifest.json")
