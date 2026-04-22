@@ -85,6 +85,15 @@ image state until we explicitly enable more repositories.
   - it does not prove a graphical login manager, Budgie session,
     display persistence, GPU acceleration, or broader `rockies` workload
     maturity
+- the fork now also exposes a bounded
+  `rocky-10_1-budgie-graphical-harness-test` target intended to complement
+  downstream Budgie graphical harness work
+- that Budgie harness target is still deliberately narrow:
+  - it reuses the same generic Rocky graphical bootstrap path
+  - it mounts a guest-side Budgie harness bundle and emits a Budgie package
+    probe summary inside the guest
+  - it does not prove a Budgie session, display manager, display persistence,
+    GPU acceleration, or broader `rockies` workload maturity
 
 ## Source Pointers
 
