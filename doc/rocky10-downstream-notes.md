@@ -101,13 +101,27 @@ image state until we explicitly enable more repositories.
   - it reuses the same generic Rocky graphical bootstrap path
   - it mounts a guest-side Budgie session-gate bundle and records a Budgie
     session transaction probe against the live Rocky 10.1 repo surface
-  - it currently keeps the core Budgie session packages unresolved on the live
-    Rocky 10.1 plus EL10 repo surface instead of pretending a full session is
-    already installable
+  - it currently keeps the core Budgie session packages unresolved on the
+    native Rocky 10.1 plus EL10 repo surface instead of pretending a full
+    session is already installable there
   - it records session-descriptor expectations for the eventual Budgie session
     target without claiming those descriptors are present today
   - it does not prove a Budgie session, display manager, display persistence,
     GPU acceleration, or broader `rockies` workload maturity
+- the fork now also exposes a first real
+  `rocky-10_1-budgie-graphical-test` target intended to publish the initial
+  Rocky 10.1 Budgie session-execution proof surface
+- that Budgie graphical target is still deliberately bounded:
+  - it consumes a Rocky 10.1 guest, enables `CRB`, installs `epel-release`,
+    and adds explicit Fedora 44 consumer repos at runtime
+  - it installs the Budgie desktop/session stack through that consumer-repo
+    path instead of claiming native Rocky publication exists today
+  - it launches `startbudgielabwc` under a headless wlroots environment and
+    proves `labwc`, `budgie-session-binary`, and
+    `org.gnome.SessionManager` appear on the session bus
+  - it does not prove display persistence, a graphical login manager,
+    bare-metal display readiness, GPU acceleration, or broader `rockies`
+    workload maturity
 
 ## Source Pointers
 
