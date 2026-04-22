@@ -1,6 +1,22 @@
 name: Rocky Graphical Bootstrap Soak
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/rocky-graphical-bootstrap-soak.yml"
+      - "flake.nix"
+      - "rocky/**"
+      - "tests/default.nix"
+      - "tests/rocky.nix"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/rocky-graphical-bootstrap-soak.yml"
+      - "flake.nix"
+      - "rocky/**"
+      - "tests/default.nix"
+      - "tests/rocky.nix"
   workflow_dispatch:
 
 permissions:
