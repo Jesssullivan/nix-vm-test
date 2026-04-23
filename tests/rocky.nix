@@ -55,6 +55,9 @@ let
     "xorg-x11-server-Xwayland"
     "xorg-x11-xauth"
   ];
+  budgieLoginManagerPackages = budgieGraphicalPackages ++ [
+    "sddm"
+  ];
   budgieGraphicalManifest = builtins.toJSON {
     target = "rocky-10_1-budgie-graphical-test";
     kind = "budgie-graphical";
@@ -953,6 +956,429 @@ let
   '';
   budgieRebootPersistenceWriteCommand =
     builtins.toJSON "python3 -c ${budgieRebootPersistenceWriter}";
+  budgieGraphicalLoginManagerPersistenceManifest = builtins.toJSON {
+    target = "rocky-10_1-budgie-graphical-login-manager-persistence-test";
+    kind = "budgie-graphical-login-manager-persistence";
+    predecessor_target = "rocky-10_1-budgie-reboot-persistence-test";
+    desktop_package = "budgie-desktop";
+    session_entry = "budgie-session";
+    persistence_service = "budgie-desktop-services";
+    compositor = "labwc";
+    companion_session_package = "labwc-session";
+    portal_backend = "xdg-desktop-portal-wlr";
+    runtime_helpers = [
+      "grim"
+      "slurp"
+      "swaybg"
+      "swayidle"
+      "wlopm"
+    ];
+    login_manager_package = "sddm";
+    login_manager_service = "sddm.service";
+    display_manager_service = "display-manager.service";
+    display_manager_alias_path = "/etc/systemd/system/display-manager.service";
+    graphical_target = "graphical.target";
+    package_set = budgieLoginManagerPackages;
+    epel_release_rpm =
+      "https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm";
+    fedora_release = "44";
+    fedora_repo_path = "/etc/yum.repos.d/fedora44.repo";
+    session_descriptor_path = "/usr/share/wayland-sessions/budgie-desktop.desktop";
+    session_launcher = "startbudgielabwc";
+    login_manager_cycles = [
+      {
+        name = "pre-reboot";
+        probe_json_path =
+          "/var/lib/budgie-graphical-login-manager-persistence/pre-reboot-probe.json";
+        login_manager_status_path =
+          "/var/lib/budgie-graphical-login-manager-persistence/pre-reboot-sddm-status.txt";
+        display_manager_status_path =
+          "/var/lib/budgie-graphical-login-manager-persistence/pre-reboot-display-manager-status.txt";
+        loginctl_sessions_path =
+          "/var/lib/budgie-graphical-login-manager-persistence/pre-reboot-logind-sessions.txt";
+        alias_state_path =
+          "/var/lib/budgie-graphical-login-manager-persistence/pre-reboot-display-manager-alias.txt";
+        journal_path =
+          "/var/lib/budgie-graphical-login-manager-persistence/pre-reboot-sddm-journal.txt";
+      }
+      {
+        name = "post-reboot";
+        probe_json_path =
+          "/var/lib/budgie-graphical-login-manager-persistence/post-reboot-probe.json";
+        login_manager_status_path =
+          "/var/lib/budgie-graphical-login-manager-persistence/post-reboot-sddm-status.txt";
+        display_manager_status_path =
+          "/var/lib/budgie-graphical-login-manager-persistence/post-reboot-display-manager-status.txt";
+        loginctl_sessions_path =
+          "/var/lib/budgie-graphical-login-manager-persistence/post-reboot-logind-sessions.txt";
+        alias_state_path =
+          "/var/lib/budgie-graphical-login-manager-persistence/post-reboot-display-manager-alias.txt";
+        journal_path =
+          "/var/lib/budgie-graphical-login-manager-persistence/post-reboot-sddm-journal.txt";
+      }
+    ];
+    current_boundary =
+      "first-rocky-budgie-graphical-login-manager-persistence-via-sddm-restart-after-reboot";
+  };
+  budgieGraphicalLoginManagerPersistenceAssertionWriter = pkgs.lib.escapeShellArg ''
+    import json
+
+    with open(
+        "/var/lib/budgie-graphical-login-manager-persistence-summary.json",
+        "r",
+        encoding="utf-8",
+    ) as handle:
+        summary = json.load(handle)
+
+    repo_surface = summary["repo_surface"]
+    package_install = summary["package_install"]
+    desktop_file = summary["desktop_file"]
+    login_manager_probe = summary["login_manager_probe"]
+    cycles = summary["login_manager_cycles"]
+
+    if repo_surface["fedora_release"] != "44":
+        raise SystemExit(f"unexpected Fedora consumer release: {repo_surface['fedora_release']}")
+
+    if not repo_surface["consumer_repo_path_exists"]:
+        raise SystemExit("Fedora consumer repo file was not present after reboot")
+
+    if not package_install["transaction_succeeded"]:
+        raise SystemExit("Budgie graphical login-manager packages were not present after reboot")
+
+    if "startbudgielabwc" not in desktop_file["exec_line"]:
+        raise SystemExit(f"unexpected desktop file Exec line: {desktop_file['exec_line']!r}")
+
+    if login_manager_probe["completed_cycle_count"] != 2:
+        raise SystemExit(
+            "expected 2 login-manager persistence cycles, "
+            f"saw {login_manager_probe['completed_cycle_count']}"
+        )
+
+    if not login_manager_probe["post_reboot_default_target_graphical"]:
+        raise SystemExit("post-reboot default target was not graphical.target")
+
+    if not login_manager_probe["post_reboot_login_manager_active"]:
+        raise SystemExit("post-reboot sddm.service was not active")
+
+    if not login_manager_probe["post_reboot_display_manager_active"]:
+        raise SystemExit("post-reboot display-manager.service was not active")
+
+    if not login_manager_probe["post_reboot_alias_exists"]:
+        raise SystemExit("post-reboot display-manager.service alias was missing")
+
+    if not login_manager_probe["post_reboot_alias_targets_sddm"]:
+        raise SystemExit("post-reboot display-manager.service alias did not point at sddm.service")
+
+    for cycle in cycles:
+        if not cycle["completed"]:
+            raise SystemExit(f"login-manager persistence cycle {cycle['name']} did not complete")
+        if not cycle["login_manager_enabled"]:
+            raise SystemExit(f"sddm.service was not enabled during cycle {cycle['name']}")
+        if not cycle["login_manager_active"]:
+            raise SystemExit(f"sddm.service was not active during cycle {cycle['name']}")
+        if not cycle["display_manager_active"]:
+            raise SystemExit(
+                f"display-manager.service was not active during cycle {cycle['name']}"
+            )
+        if cycle["default_target"] != "graphical.target":
+            raise SystemExit(
+                f"default target during cycle {cycle['name']} was {cycle['default_target']!r}"
+            )
+        if not cycle["display_manager_alias_exists"]:
+            raise SystemExit(
+                f"display-manager.service alias was missing during cycle {cycle['name']}"
+            )
+        if not cycle["display_manager_alias_targets_sddm"]:
+            raise SystemExit(
+                f"display-manager.service alias did not point at sddm.service during cycle {cycle['name']}"
+            )
+  '';
+  budgieGraphicalLoginManagerPersistenceAssertionCommand =
+    builtins.toJSON
+    "python3 -c ${budgieGraphicalLoginManagerPersistenceAssertionWriter}";
+  budgieGraphicalLoginManagerPersistenceScript = ''
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    manifest_path="''${1:?manifest path required}"
+    phase="''${2:?phase required}"
+    summary_path="''${3:?summary path required}"
+    install_log_path="''${4:?install log path required}"
+
+    harness_dir="$(dirname "$manifest_path")"
+
+    case "$phase" in
+      pre-reboot)
+        dnf install -y ${builtins.toJSON "https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm"} >/dev/null
+        dnf install -y dnf-plugins-core >/dev/null
+        dnf config-manager --set-enabled crb >/dev/null
+
+        ${fedora44ConsumerRepoWriteCommand}
+
+        dnf install -y --setopt=install_weak_deps=False \
+          ${builtins.concatStringsSep " \\\n          " budgieLoginManagerPackages} \
+          >"$install_log_path"
+
+        systemctl set-default graphical.target >/dev/null
+        systemctl enable sddm.service >/dev/null
+        systemctl start sddm.service
+        ;;
+      post-reboot)
+        test -s "$install_log_path"
+        test -f /etc/yum.repos.d/fedora44.repo
+        ;;
+      *)
+        printf 'unknown login-manager persistence phase: %s\n' "$phase" >&2
+        exit 1
+        ;;
+    esac
+
+    command -v loginctl >/dev/null
+    command -v readlink >/dev/null
+    command -v systemctl >/dev/null
+
+    desktop_file="/usr/share/wayland-sessions/budgie-desktop.desktop"
+    test -f "$desktop_file"
+    grep -q '^Exec=.*/startbudgielabwc$' "$desktop_file"
+
+    login_manager_status_path="$harness_dir/''${phase}-sddm-status.txt"
+    display_manager_status_path="$harness_dir/''${phase}-display-manager-status.txt"
+    loginctl_sessions_path="$harness_dir/''${phase}-logind-sessions.txt"
+    alias_state_path="$harness_dir/''${phase}-display-manager-alias.txt"
+    journal_path="$harness_dir/''${phase}-sddm-journal.txt"
+
+    systemctl status --no-pager sddm.service >"$login_manager_status_path" || true
+    systemctl status --no-pager display-manager.service >"$display_manager_status_path" || true
+    loginctl list-sessions --no-legend >"$loginctl_sessions_path" || true
+    ls -l /etc/systemd/system/display-manager.service >"$alias_state_path" || true
+    journalctl -b -u sddm.service --no-pager -n 120 >"$journal_path" || true
+
+    systemctl is-enabled sddm.service >/dev/null
+    systemctl is-active sddm.service >/dev/null
+    systemctl is-active display-manager.service >/dev/null
+    test "$(systemctl get-default)" = "graphical.target"
+    test -L /etc/systemd/system/display-manager.service
+
+    python3 - "$manifest_path" "$phase" "$summary_path" "$install_log_path" <<'PY'
+    import json
+    from pathlib import Path
+    import subprocess
+    import sys
+
+    manifest_path, phase, summary_path, install_log_path = sys.argv[1:5]
+
+    with open(manifest_path, "r", encoding="utf-8") as handle:
+        manifest = json.load(handle)
+
+    def read_lines(path: str, limit: int = 120) -> list[str]:
+        file_path = Path(path)
+        if not file_path.exists():
+            return []
+        with file_path.open("r", encoding="utf-8", errors="replace") as handle:
+            return [line.rstrip("\n") for _, line in zip(range(limit), handle)]
+
+    def run_command(command: list[str]) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            check=False,
+        )
+
+    def probe_installed_package(name: str) -> dict:
+        result = run_command(
+            ["rpm", "-q", "--qf", "%{name}-%{version}-%{release}.%{arch}\n", name]
+        )
+        lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+        return {
+            "name": name,
+            "installed": result.returncode == 0,
+            "matches": lines,
+        }
+
+    desktop_file_path = Path(manifest["session_descriptor_path"])
+    exec_line = ""
+    if desktop_file_path.exists():
+        for line in desktop_file_path.read_text(encoding="utf-8", errors="replace").splitlines():
+            if line.startswith("Exec="):
+                exec_line = line
+
+    installed_package_versions = [
+        probe_installed_package(name) for name in manifest["package_set"]
+    ]
+
+    current_cycle = next(
+        cycle for cycle in manifest["login_manager_cycles"] if cycle["name"] == phase
+    )
+    default_target_result = run_command(["systemctl", "get-default"])
+    login_manager_enabled_result = run_command(
+        ["systemctl", "is-enabled", manifest["login_manager_service"]]
+    )
+    login_manager_active_result = run_command(
+        ["systemctl", "is-active", manifest["login_manager_service"]]
+    )
+    display_manager_active_result = run_command(
+        ["systemctl", "is-active", manifest["display_manager_service"]]
+    )
+
+    alias_path = Path(manifest["display_manager_alias_path"])
+    alias_target = alias_path.readlink().as_posix() if alias_path.is_symlink() else ""
+
+    current_probe = {
+        "default_target": default_target_result.stdout.strip(),
+        "login_manager_enabled": login_manager_enabled_result.returncode == 0,
+        "login_manager_active": login_manager_active_result.returncode == 0,
+        "display_manager_active": display_manager_active_result.returncode == 0,
+        "display_manager_alias_exists": alias_path.exists(),
+        "display_manager_alias_is_symlink": alias_path.is_symlink(),
+        "display_manager_alias_target": alias_target,
+        "display_manager_alias_targets_sddm": alias_target.endswith("sddm.service"),
+    }
+    Path(current_cycle["probe_json_path"]).write_text(
+        json.dumps(current_probe, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    cycles = []
+    completed_cycle_count = 0
+    for cycle in manifest["login_manager_cycles"]:
+        login_manager_status_excerpt = read_lines(cycle["login_manager_status_path"])
+        display_manager_status_excerpt = read_lines(cycle["display_manager_status_path"])
+        loginctl_sessions_excerpt = read_lines(cycle["loginctl_sessions_path"])
+        alias_state_excerpt = read_lines(cycle["alias_state_path"])
+        journal_excerpt = read_lines(cycle["journal_path"])
+        completed = bool(
+            login_manager_status_excerpt
+            or display_manager_status_excerpt
+            or loginctl_sessions_excerpt
+            or alias_state_excerpt
+            or journal_excerpt
+        )
+        if completed:
+            completed_cycle_count += 1
+        probe_path = Path(cycle["probe_json_path"])
+        if probe_path.exists():
+            phase_probe = json.loads(probe_path.read_text(encoding="utf-8"))
+        else:
+            phase_probe = {
+                "default_target": "",
+                "login_manager_enabled": False,
+                "login_manager_active": False,
+                "display_manager_active": False,
+                "display_manager_alias_exists": False,
+                "display_manager_alias_is_symlink": False,
+                "display_manager_alias_target": "",
+                "display_manager_alias_targets_sddm": False,
+            }
+
+        cycles.append(
+            {
+                "name": cycle["name"],
+                "completed": completed,
+                "default_target": phase_probe["default_target"],
+                "login_manager_enabled": phase_probe["login_manager_enabled"],
+                "login_manager_active": phase_probe["login_manager_active"],
+                "display_manager_active": phase_probe["display_manager_active"],
+                "display_manager_alias_exists": phase_probe["display_manager_alias_exists"],
+                "display_manager_alias_is_symlink": phase_probe["display_manager_alias_is_symlink"],
+                "display_manager_alias_target": phase_probe["display_manager_alias_target"],
+                "display_manager_alias_targets_sddm": phase_probe[
+                    "display_manager_alias_targets_sddm"
+                ],
+                "probe_json_path": cycle["probe_json_path"],
+                "login_manager_status_path": cycle["login_manager_status_path"],
+                "display_manager_status_path": cycle["display_manager_status_path"],
+                "loginctl_sessions_path": cycle["loginctl_sessions_path"],
+                "alias_state_path": cycle["alias_state_path"],
+                "journal_path": cycle["journal_path"],
+                "login_manager_status_excerpt": login_manager_status_excerpt,
+                "display_manager_status_excerpt": display_manager_status_excerpt,
+                "loginctl_sessions_excerpt": loginctl_sessions_excerpt,
+                "alias_state_excerpt": alias_state_excerpt,
+                "journal_excerpt": journal_excerpt,
+            }
+        )
+
+    post_reboot_cycle = next(
+        (cycle for cycle in cycles if cycle["name"] == "post-reboot"),
+        None,
+    )
+
+    summary = {
+        "kind": manifest["kind"],
+        "target": manifest["target"],
+        "predecessor_target": manifest["predecessor_target"],
+        "current_boundary": manifest["current_boundary"],
+        "executed_phase": phase,
+        "repo_surface": {
+            "epel_release_rpm": manifest["epel_release_rpm"],
+            "crb_enabled": True,
+            "fedora_release": manifest["fedora_release"],
+            "consumer_repo_path": manifest["fedora_repo_path"],
+            "consumer_repo_path_exists": Path(manifest["fedora_repo_path"]).exists(),
+        },
+        "desktop_file": {
+            "path": manifest["session_descriptor_path"],
+            "exists": desktop_file_path.exists(),
+            "exec_line": exec_line,
+        },
+        "package_install": {
+            "packages": manifest["package_set"],
+            "transaction_succeeded": all(
+                probe["installed"] for probe in installed_package_versions
+            ),
+            "installed_package_versions": installed_package_versions,
+            "log_excerpt": read_lines(install_log_path),
+        },
+        "login_manager_cycles": cycles,
+        "login_manager_probe": {
+            "cycle_names": [cycle["name"] for cycle in cycles if cycle["completed"]],
+            "completed_cycle_count": completed_cycle_count,
+            "post_reboot_default_target_graphical": bool(
+                post_reboot_cycle
+                and post_reboot_cycle["default_target"] == manifest["graphical_target"]
+            ),
+            "post_reboot_login_manager_active": bool(
+                post_reboot_cycle and post_reboot_cycle["login_manager_active"]
+            ),
+            "post_reboot_display_manager_active": bool(
+                post_reboot_cycle and post_reboot_cycle["display_manager_active"]
+            ),
+            "post_reboot_alias_exists": bool(
+                post_reboot_cycle and post_reboot_cycle["display_manager_alias_exists"]
+            ),
+            "post_reboot_alias_targets_sddm": bool(
+                post_reboot_cycle
+                and post_reboot_cycle["display_manager_alias_targets_sddm"]
+            ),
+        },
+    }
+
+    with open(summary_path, "w", encoding="utf-8") as handle:
+        json.dump(summary, handle, indent=2)
+        handle.write("\n")
+    PY
+  '';
+  budgieGraphicalLoginManagerPersistenceWriter = pkgs.lib.escapeShellArg ''
+    from pathlib import Path
+
+    harness_dir = Path("/var/lib/budgie-graphical-login-manager-persistence")
+    harness_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+    (harness_dir / "manifest.json").write_text(
+        ${builtins.toJSON budgieGraphicalLoginManagerPersistenceManifest} + "\n",
+        encoding="utf-8",
+    )
+    script_path = harness_dir / "run-graphical-login-manager-persistence-test.sh"
+    script_path.write_text(
+        ${builtins.toJSON budgieGraphicalLoginManagerPersistenceScript},
+        encoding="utf-8",
+    )
+    script_path.chmod(0o755)
+  '';
+  budgieGraphicalLoginManagerPersistenceWriteCommand =
+    builtins.toJSON
+    "python3 -c ${budgieGraphicalLoginManagerPersistenceWriter}";
   budgieGraphicalHarnessManifest = builtins.toJSON {
     target = "rocky-10_1-budgie-graphical-harness-test";
     kind = "budgie-graphical-harness";
@@ -1387,6 +1813,68 @@ let
       vm.succeed("sed -n '1,120p' /var/lib/budgie-reboot-persistence/post-reboot-session.log || true")
     '';
   }).sandboxed;
+  budgieGraphicalLoginManagerPersistenceTest = runner: (runner {
+    sharedDirs = {};
+    testScript = ''
+      vm.start(allow_reboot = True)
+      vm.wait_for_unit("multi-user.target")
+      vm.succeed("command -v python3")
+      vm.succeed(${budgieGraphicalLoginManagerPersistenceWriteCommand})
+      vm.succeed("test -f /var/lib/budgie-graphical-login-manager-persistence/manifest.json")
+      vm.succeed("test -x /var/lib/budgie-graphical-login-manager-persistence/run-graphical-login-manager-persistence-test.sh")
+      vm.succeed("grep -q 'rocky-10_1-budgie-reboot-persistence-test' /var/lib/budgie-graphical-login-manager-persistence/manifest.json")
+      vm.succeed("""
+        timeout 1200 bash -lc '
+          set -euo pipefail
+          /var/lib/budgie-graphical-login-manager-persistence/run-graphical-login-manager-persistence-test.sh \
+            /var/lib/budgie-graphical-login-manager-persistence/manifest.json \
+            pre-reboot \
+            /var/lib/budgie-graphical-login-manager-persistence-summary.json \
+            /var/lib/budgie-graphical-login-manager-persistence-install.log || {
+              status=$?
+              sed -n "1,200p" /var/lib/budgie-graphical-login-manager-persistence-install.log || true
+              sed -n "1,120p" /var/lib/budgie-graphical-login-manager-persistence/pre-reboot-sddm-status.txt || true
+              sed -n "1,120p" /var/lib/budgie-graphical-login-manager-persistence/pre-reboot-display-manager-status.txt || true
+              sed -n "1,120p" /var/lib/budgie-graphical-login-manager-persistence/pre-reboot-sddm-journal.txt || true
+              exit "$status"
+            }
+        '
+      """)
+      vm.reboot()
+      vm.wait_for_unit("graphical.target")
+      vm.wait_for_unit("sddm.service")
+      vm.succeed("test -f /var/lib/budgie-graphical-login-manager-persistence/manifest.json")
+      vm.succeed("test -x /var/lib/budgie-graphical-login-manager-persistence/run-graphical-login-manager-persistence-test.sh")
+      vm.succeed("""
+        timeout 900 bash -lc '
+          set -euo pipefail
+          /var/lib/budgie-graphical-login-manager-persistence/run-graphical-login-manager-persistence-test.sh \
+            /var/lib/budgie-graphical-login-manager-persistence/manifest.json \
+            post-reboot \
+            /var/lib/budgie-graphical-login-manager-persistence-summary.json \
+            /var/lib/budgie-graphical-login-manager-persistence-install.log || {
+              status=$?
+              sed -n "1,200p" /var/lib/budgie-graphical-login-manager-persistence-install.log || true
+              sed -n "1,120p" /var/lib/budgie-graphical-login-manager-persistence/post-reboot-sddm-status.txt || true
+              sed -n "1,120p" /var/lib/budgie-graphical-login-manager-persistence/post-reboot-display-manager-status.txt || true
+              sed -n "1,120p" /var/lib/budgie-graphical-login-manager-persistence/post-reboot-sddm-journal.txt || true
+              exit "$status"
+            }
+        '
+      """)
+      vm.succeed("test -s /var/lib/budgie-graphical-login-manager-persistence-summary.json")
+      vm.succeed("test -s /var/lib/budgie-graphical-login-manager-persistence-install.log")
+      vm.succeed("test -s /var/lib/budgie-graphical-login-manager-persistence/pre-reboot-sddm-status.txt")
+      vm.succeed("test -s /var/lib/budgie-graphical-login-manager-persistence/post-reboot-sddm-status.txt")
+      vm.succeed("grep -q 'rocky-10_1-budgie-reboot-persistence-test' /var/lib/budgie-graphical-login-manager-persistence-summary.json")
+      vm.succeed("grep -q 'graphical.target' /var/lib/budgie-graphical-login-manager-persistence-summary.json")
+      vm.succeed("grep -q 'sddm.service' /var/lib/budgie-graphical-login-manager-persistence-summary.json")
+      vm.succeed(${budgieGraphicalLoginManagerPersistenceAssertionCommand})
+      vm.succeed("cat /var/lib/budgie-graphical-login-manager-persistence-summary.json")
+      vm.succeed("sed -n '1,120p' /var/lib/budgie-graphical-login-manager-persistence/pre-reboot-sddm-status.txt || true")
+      vm.succeed("sed -n '1,120p' /var/lib/budgie-graphical-login-manager-persistence/post-reboot-sddm-status.txt || true")
+    '';
+  }).sandboxed;
   budgieGraphicalHarnessTest = runner: (runner {
     sharedDirs = {};
     testScript = ''
@@ -1468,6 +1956,8 @@ runTestOnEveryImage multiUserTest //
   "10_1-budgie-graphical-test" = budgieGraphicalTest lib.rocky."10_1";
   "10_1-budgie-display-persistence-test" = budgieDisplayPersistenceTest lib.rocky."10_1";
   "10_1-budgie-reboot-persistence-test" = budgieRebootPersistenceTest lib.rocky."10_1";
+  "10_1-budgie-graphical-login-manager-persistence-test" =
+    budgieGraphicalLoginManagerPersistenceTest lib.rocky."10_1";
   "10_1-budgie-graphical-harness-test" = budgieGraphicalHarnessTest lib.rocky."10_1";
   "10_1-budgie-session-gate-test" = budgieSessionGateTest lib.rocky."10_1";
 } //
