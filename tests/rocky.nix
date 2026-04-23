@@ -1332,6 +1332,7 @@ let
   budgieRebootPersistenceTest = runner: (runner {
     sharedDirs = {};
     testScript = ''
+      vm.start(allow_reboot = True)
       vm.wait_for_unit("multi-user.target")
       vm.succeed("command -v python3")
       vm.succeed(${budgieRebootPersistenceWriteCommand})
