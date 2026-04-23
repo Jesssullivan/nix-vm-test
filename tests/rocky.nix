@@ -634,6 +634,325 @@ let
   '';
   budgieDisplayPersistenceWriteCommand =
     builtins.toJSON "python3 -c ${budgieDisplayPersistenceWriter}";
+  budgieRebootPersistenceManifest = builtins.toJSON {
+    target = "rocky-10_1-budgie-reboot-persistence-test";
+    kind = "budgie-reboot-persistence";
+    predecessor_target = "rocky-10_1-budgie-display-persistence-test";
+    desktop_package = "budgie-desktop";
+    session_entry = "budgie-session";
+    persistence_service = "budgie-desktop-services";
+    compositor = "labwc";
+    companion_session_package = "labwc-session";
+    portal_backend = "xdg-desktop-portal-wlr";
+    runtime_helpers = [
+      "grim"
+      "slurp"
+      "swaybg"
+      "swayidle"
+      "wlopm"
+    ];
+    package_set = budgieGraphicalPackages;
+    epel_release_rpm =
+      "https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm";
+    fedora_release = "44";
+    fedora_repo_path = "/etc/yum.repos.d/fedora44.repo";
+    session_descriptor_path = "/usr/share/wayland-sessions/budgie-desktop.desktop";
+    session_launcher = "startbudgielabwc";
+    session_manager_bus_name = "org.gnome.SessionManager";
+    session_manager_object_path = "/org/gnome/SessionManager";
+    session_manager_interface = "org.gnome.SessionManager";
+    session_binary = "budgie-session-binary";
+    reboot_cycles = [
+      {
+        name = "pre-reboot";
+        session_log_path = "/var/lib/budgie-reboot-persistence/pre-reboot-session.log";
+        session_manager_path =
+          "/var/lib/budgie-reboot-persistence/pre-reboot-session-manager.txt";
+        labwc_process_path =
+          "/var/lib/budgie-reboot-persistence/pre-reboot-labwc-processes.txt";
+        budgie_session_process_path =
+          "/var/lib/budgie-reboot-persistence/pre-reboot-session-processes.txt";
+      }
+      {
+        name = "post-reboot";
+        session_log_path = "/var/lib/budgie-reboot-persistence/post-reboot-session.log";
+        session_manager_path =
+          "/var/lib/budgie-reboot-persistence/post-reboot-session-manager.txt";
+        labwc_process_path =
+          "/var/lib/budgie-reboot-persistence/post-reboot-labwc-processes.txt";
+        budgie_session_process_path =
+          "/var/lib/budgie-reboot-persistence/post-reboot-session-processes.txt";
+      }
+    ];
+    current_boundary =
+      "first-rocky-budgie-reboot-persistence-via-post-reboot-session-rerun";
+  };
+  budgieRebootPersistenceAssertionWriter = pkgs.lib.escapeShellArg ''
+    import json
+
+    with open("/var/lib/budgie-reboot-persistence-summary.json", "r", encoding="utf-8") as handle:
+        summary = json.load(handle)
+
+    repo_surface = summary["repo_surface"]
+    package_install = summary["package_install"]
+    reboot_probe = summary["reboot_probe"]
+    cycles = summary["reboot_cycles"]
+
+    if repo_surface["fedora_release"] != "44":
+        raise SystemExit(f"unexpected Fedora consumer release: {repo_surface['fedora_release']}")
+
+    if not repo_surface["consumer_repo_path_exists"]:
+        raise SystemExit("Fedora consumer repo file was not present after reboot")
+
+    if not package_install["transaction_succeeded"]:
+        raise SystemExit("Budgie reboot-persistence packages were not present after reboot")
+
+    if reboot_probe["completed_cycle_count"] != 2:
+        raise SystemExit(
+            f"expected 2 reboot-persistence cycles, saw {reboot_probe['completed_cycle_count']}"
+        )
+
+    if not reboot_probe["post_reboot_registered"]:
+        raise SystemExit("post-reboot Budgie session did not register org.gnome.SessionManager")
+
+    for cycle in cycles:
+        if not cycle["completed"]:
+            raise SystemExit(f"reboot-persistence cycle {cycle['name']} did not complete")
+        if not cycle["labwc_running"]:
+            raise SystemExit(f"labwc did not stay up during cycle {cycle['name']}")
+        if not cycle["budgie_session_running"]:
+            raise SystemExit(
+                f"budgie-session did not stay up during cycle {cycle['name']}"
+            )
+        if not cycle["session_manager_registered"]:
+            raise SystemExit(
+                f"org.gnome.SessionManager did not register during cycle {cycle['name']}"
+            )
+  '';
+  budgieRebootPersistenceAssertionCommand =
+    builtins.toJSON "python3 -c ${budgieRebootPersistenceAssertionWriter}";
+  budgieRebootPersistenceScript = ''
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    manifest_path="''${1:?manifest path required}"
+    phase="''${2:?phase required}"
+    summary_path="''${3:?summary path required}"
+    install_log_path="''${4:?install log path required}"
+
+    harness_dir="$(dirname "$manifest_path")"
+    session_script_path="$harness_dir/run-session.sh"
+
+    case "$phase" in
+      pre-reboot)
+        dnf install -y ${builtins.toJSON "https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm"} >/dev/null
+        dnf install -y dnf-plugins-core >/dev/null
+        dnf config-manager --set-enabled crb >/dev/null
+
+        ${fedora44ConsumerRepoWriteCommand}
+
+        dnf install -y --setopt=install_weak_deps=False \
+          ${builtins.concatStringsSep " \\\n          " budgieGraphicalPackages} \
+          >"$install_log_path"
+        ;;
+      post-reboot)
+        test -s "$install_log_path"
+        test -f /etc/yum.repos.d/fedora44.repo
+        ;;
+      *)
+        printf 'unknown reboot-persistence phase: %s\n' "$phase" >&2
+        exit 1
+        ;;
+    esac
+
+    command -v dbus-run-session >/dev/null
+    command -v gdbus >/dev/null
+    command -v pgrep >/dev/null
+    command -v startbudgielabwc >/dev/null
+    command -v budgie-session >/dev/null
+
+    desktop_file="/usr/share/wayland-sessions/budgie-desktop.desktop"
+    test -f "$desktop_file"
+    grep -q '^Exec=.*/startbudgielabwc$' "$desktop_file"
+
+    install -d -m 700 /tmp/budgie-graphical-runtime
+    test -x "$session_script_path"
+
+    log_path="$harness_dir/''${phase}-session.log"
+    manager_path="$harness_dir/''${phase}-session-manager.txt"
+    labwc_path="$harness_dir/''${phase}-labwc-processes.txt"
+    budgie_path="$harness_dir/''${phase}-session-processes.txt"
+
+    dbus-run-session -- \
+      "$session_script_path" \
+      "$log_path" \
+      "$manager_path" \
+      "$labwc_path" \
+      "$budgie_path"
+
+    test -s "$manager_path"
+    sleep 2
+
+    python3 - "$manifest_path" "$phase" "$summary_path" "$install_log_path" <<'PY'
+    import json
+    from pathlib import Path
+    import subprocess
+    import sys
+
+    manifest_path, phase, summary_path, install_log_path = sys.argv[1:5]
+
+    with open(manifest_path, "r", encoding="utf-8") as handle:
+        manifest = json.load(handle)
+
+    def read_lines(path: str, limit: int = 80) -> list[str]:
+        file_path = Path(path)
+        if not file_path.exists():
+            return []
+        with file_path.open("r", encoding="utf-8", errors="replace") as handle:
+            return [line.rstrip("\n") for _, line in zip(range(limit), handle)]
+
+    def probe_installed_package(name: str) -> dict:
+        result = subprocess.run(
+            ["rpm", "-q", "--qf", "%{name}-%{version}-%{release}.%{arch}\n", name],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            check=False,
+        )
+        lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+        return {
+            "name": name,
+            "installed": result.returncode == 0,
+            "matches": lines,
+        }
+
+    desktop_file_path = Path(manifest["session_descriptor_path"])
+    exec_line = ""
+    desktop_names_line = ""
+    if desktop_file_path.exists():
+        for line in desktop_file_path.read_text(encoding="utf-8", errors="replace").splitlines():
+            if line.startswith("Exec="):
+                exec_line = line
+            if line.startswith("DesktopNames="):
+                desktop_names_line = line
+
+    installed_package_versions = [
+        probe_installed_package(name) for name in manifest["package_set"]
+    ]
+
+    cycles = []
+    completed_cycle_count = 0
+    for cycle in manifest["reboot_cycles"]:
+        labwc_processes = read_lines(cycle["labwc_process_path"])
+        budgie_session_processes = read_lines(cycle["budgie_session_process_path"])
+        session_manager_excerpt = read_lines(cycle["session_manager_path"])
+        session_log_excerpt = read_lines(cycle["session_log_path"])
+        completed = bool(
+            labwc_processes
+            or budgie_session_processes
+            or session_manager_excerpt
+            or session_log_excerpt
+        )
+        if completed:
+            completed_cycle_count += 1
+        cycles.append(
+            {
+                "name": cycle["name"],
+                "completed": completed,
+                "session_log_path": cycle["session_log_path"],
+                "session_manager_path": cycle["session_manager_path"],
+                "labwc_process_path": cycle["labwc_process_path"],
+                "budgie_session_process_path": cycle["budgie_session_process_path"],
+                "labwc_processes": labwc_processes,
+                "budgie_session_processes": budgie_session_processes,
+                "labwc_running": bool(labwc_processes),
+                "budgie_session_running": any(
+                    "budgie-session-binary" in line or "budgie-session --builtin" in line
+                    for line in budgie_session_processes
+                ),
+                "session_manager_registered": bool(session_manager_excerpt),
+                "session_manager_excerpt": session_manager_excerpt,
+                "session_log_excerpt": session_log_excerpt,
+            }
+        )
+
+    post_reboot_cycle = next(
+        (cycle for cycle in cycles if cycle["name"] == "post-reboot"),
+        None,
+    )
+
+    summary = {
+        "kind": manifest["kind"],
+        "target": manifest["target"],
+        "predecessor_target": manifest["predecessor_target"],
+        "current_boundary": manifest["current_boundary"],
+        "executed_phase": phase,
+        "repo_surface": {
+            "epel_release_rpm": manifest["epel_release_rpm"],
+            "crb_enabled": True,
+            "fedora_release": manifest["fedora_release"],
+            "consumer_repo_path": manifest["fedora_repo_path"],
+            "consumer_repo_path_exists": Path(manifest["fedora_repo_path"]).exists(),
+        },
+        "desktop_file": {
+            "path": manifest["session_descriptor_path"],
+            "exists": desktop_file_path.exists(),
+            "exec_line": exec_line,
+            "desktop_names_line": desktop_names_line,
+        },
+        "package_install": {
+            "packages": manifest["package_set"],
+            "transaction_succeeded": all(
+                probe["installed"] for probe in installed_package_versions
+            ),
+            "installed_package_versions": installed_package_versions,
+            "log_excerpt": read_lines(install_log_path),
+        },
+        "reboot_cycles": cycles,
+        "reboot_probe": {
+            "cycle_names": [cycle["name"] for cycle in cycles if cycle["completed"]],
+            "completed_cycle_count": completed_cycle_count,
+            "post_reboot_registered": bool(
+                post_reboot_cycle and post_reboot_cycle["session_manager_registered"]
+            ),
+            "post_reboot_labwc_running": bool(
+                post_reboot_cycle and post_reboot_cycle["labwc_running"]
+            ),
+            "post_reboot_budgie_session_running": bool(
+                post_reboot_cycle and post_reboot_cycle["budgie_session_running"]
+            ),
+        },
+    }
+
+    with open(summary_path, "w", encoding="utf-8") as handle:
+        json.dump(summary, handle, indent=2)
+        handle.write("\n")
+    PY
+  '';
+  budgieRebootPersistenceWriter = pkgs.lib.escapeShellArg ''
+    from pathlib import Path
+
+    harness_dir = Path("/var/lib/budgie-reboot-persistence")
+    harness_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+    (harness_dir / "manifest.json").write_text(
+        ${builtins.toJSON budgieRebootPersistenceManifest} + "\n",
+        encoding="utf-8",
+    )
+    script_path = harness_dir / "run-reboot-persistence-test.sh"
+    script_path.write_text(
+        ${builtins.toJSON budgieRebootPersistenceScript},
+        encoding="utf-8",
+    )
+    script_path.chmod(0o755)
+    session_script_path = harness_dir / "run-session.sh"
+    session_script_path.write_text(
+        ${builtins.toJSON budgieGraphicalSessionScript},
+        encoding="utf-8",
+    )
+    session_script_path.chmod(0o755)
+  '';
+  budgieRebootPersistenceWriteCommand =
+    builtins.toJSON "python3 -c ${budgieRebootPersistenceWriter}";
   budgieGraphicalHarnessManifest = builtins.toJSON {
     target = "rocky-10_1-budgie-graphical-harness-test";
     kind = "budgie-graphical-harness";
@@ -1010,6 +1329,64 @@ let
       vm.succeed("sed -n '1,120p' /tmp/budgie-display-persistence/relaunch-session.log || true")
     '';
   }).sandboxed;
+  budgieRebootPersistenceTest = runner: (runner {
+    sharedDirs = {};
+    testScript = ''
+      vm.start(allow_reboot = True)
+      vm.wait_for_unit("multi-user.target")
+      vm.succeed("command -v python3")
+      vm.succeed(${budgieRebootPersistenceWriteCommand})
+      vm.succeed("test -f /var/lib/budgie-reboot-persistence/manifest.json")
+      vm.succeed("test -x /var/lib/budgie-reboot-persistence/run-reboot-persistence-test.sh")
+      vm.succeed("grep -q 'rocky-10_1-budgie-display-persistence-test' /var/lib/budgie-reboot-persistence/manifest.json")
+      vm.succeed("""
+        timeout 1200 bash -lc '
+          set -euo pipefail
+          /var/lib/budgie-reboot-persistence/run-reboot-persistence-test.sh \
+            /var/lib/budgie-reboot-persistence/manifest.json \
+            pre-reboot \
+            /var/lib/budgie-reboot-persistence-summary.json \
+            /var/lib/budgie-reboot-persistence-install.log || {
+              status=$?
+              sed -n "1,200p" /var/lib/budgie-reboot-persistence-install.log || true
+              sed -n "1,120p" /var/lib/budgie-reboot-persistence/pre-reboot-session.log || true
+              exit "$status"
+            }
+        '
+      """)
+      vm.reboot()
+      vm.wait_for_unit("multi-user.target")
+      vm.succeed("test -f /var/lib/budgie-reboot-persistence/manifest.json")
+      vm.succeed("test -x /var/lib/budgie-reboot-persistence/run-reboot-persistence-test.sh")
+      vm.succeed("""
+        timeout 900 bash -lc '
+          set -euo pipefail
+          /var/lib/budgie-reboot-persistence/run-reboot-persistence-test.sh \
+            /var/lib/budgie-reboot-persistence/manifest.json \
+            post-reboot \
+            /var/lib/budgie-reboot-persistence-summary.json \
+            /var/lib/budgie-reboot-persistence-install.log || {
+              status=$?
+              sed -n "1,200p" /var/lib/budgie-reboot-persistence-install.log || true
+              sed -n "1,120p" /var/lib/budgie-reboot-persistence/pre-reboot-session.log || true
+              sed -n "1,120p" /var/lib/budgie-reboot-persistence/post-reboot-session.log || true
+              exit "$status"
+            }
+        '
+      """)
+      vm.succeed("test -s /var/lib/budgie-reboot-persistence-summary.json")
+      vm.succeed("test -s /var/lib/budgie-reboot-persistence-install.log")
+      vm.succeed("test -s /var/lib/budgie-reboot-persistence/pre-reboot-session-manager.txt")
+      vm.succeed("test -s /var/lib/budgie-reboot-persistence/post-reboot-session-manager.txt")
+      vm.succeed("grep -q 'rocky-10_1-budgie-display-persistence-test' /var/lib/budgie-reboot-persistence-summary.json")
+      vm.succeed("grep -q 'org.gnome.SessionManager' /var/lib/budgie-reboot-persistence-summary.json")
+      vm.succeed("grep -q 'post-reboot' /var/lib/budgie-reboot-persistence-summary.json")
+      vm.succeed(${budgieRebootPersistenceAssertionCommand})
+      vm.succeed("cat /var/lib/budgie-reboot-persistence-summary.json")
+      vm.succeed("sed -n '1,120p' /var/lib/budgie-reboot-persistence/pre-reboot-session.log || true")
+      vm.succeed("sed -n '1,120p' /var/lib/budgie-reboot-persistence/post-reboot-session.log || true")
+    '';
+  }).sandboxed;
   budgieGraphicalHarnessTest = runner: (runner {
     sharedDirs = {};
     testScript = ''
@@ -1090,6 +1467,7 @@ runTestOnEveryImage multiUserTest //
   "10_1-graphical-bootstrap-test" = graphicalBootstrapTest lib.rocky."10_1";
   "10_1-budgie-graphical-test" = budgieGraphicalTest lib.rocky."10_1";
   "10_1-budgie-display-persistence-test" = budgieDisplayPersistenceTest lib.rocky."10_1";
+  "10_1-budgie-reboot-persistence-test" = budgieRebootPersistenceTest lib.rocky."10_1";
   "10_1-budgie-graphical-harness-test" = budgieGraphicalHarnessTest lib.rocky."10_1";
   "10_1-budgie-session-gate-test" = budgieSessionGateTest lib.rocky."10_1";
 } //
