@@ -1,9 +1,9 @@
-name: Rocky Budgie Reboot Persistence Soak
+name: Rocky Budgie Graphical Login Manager Persistence Soak
 
 on:
   pull_request:
     paths:
-      - ".github/workflows/rocky-budgie-reboot-persistence-soak.yml"
+      - ".github/workflows/rocky-budgie-graphical-login-manager-persistence-soak.yml"
       - "doc/rocky10-downstream-notes.md"
       - "flake.nix"
       - "rocky/**"
@@ -13,7 +13,7 @@ on:
     branches:
       - main
     paths:
-      - ".github/workflows/rocky-budgie-reboot-persistence-soak.yml"
+      - ".github/workflows/rocky-budgie-graphical-login-manager-persistence-soak.yml"
       - "doc/rocky10-downstream-notes.md"
       - "flake.nix"
       - "rocky/**"
@@ -25,12 +25,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: rocky-budgie-reboot-persistence-soak-${{ github.event.pull_request.number || github.ref }}
+  group: rocky-budgie-graphical-login-manager-persistence-soak-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 
 jobs:
-  rocky-budgie-reboot-persistence-soak:
-    name: Prove Rocky 10.1 Budgie reboot-persistence target
+  rocky-budgie-graphical-login-manager-persistence-soak:
+    name: Prove Rocky 10.1 Budgie graphical login-manager persistence target
     runs-on: nix-vm-test-kvm
     timeout-minutes: 90
     steps:
@@ -71,7 +71,7 @@ jobs:
             qemu-system-x86_64 -accel help | grep -x kvm
           '
 
-      - name: Verify Rocky 10.1 Budgie reboot-persistence attrs
+      - name: Verify Rocky 10.1 Budgie graphical login-manager persistence attrs
         run: |
           nix eval --json --impure --expr '
             let
@@ -96,6 +96,9 @@ jobs:
               budgie_reboot_persistence =
                 builtins.hasAttr "rocky-10_1-budgie-reboot-persistence-test"
                 flake.checks."x86_64-linux";
+              budgie_graphical_login_manager_persistence =
+                builtins.hasAttr "rocky-10_1-budgie-graphical-login-manager-persistence-test"
+                flake.checks."x86_64-linux";
             }
           '
           nix eval --raw --impure --expr '
@@ -109,13 +112,14 @@ jobs:
               && builtins.hasAttr "rocky-10_1-budgie-graphical-test" flake.checks."x86_64-linux"
               && builtins.hasAttr "rocky-10_1-budgie-display-persistence-test" flake.checks."x86_64-linux"
               && builtins.hasAttr "rocky-10_1-budgie-reboot-persistence-test" flake.checks."x86_64-linux"
-            then "rocky-10.1-budgie-reboot-persistence-ok"
-            else builtins.throw "missing rocky 10_1 budgie reboot-persistence attrs"
+              && builtins.hasAttr "rocky-10_1-budgie-graphical-login-manager-persistence-test" flake.checks."x86_64-linux"
+            then "rocky-10.1-budgie-graphical-login-manager-persistence-ok"
+            else builtins.throw "missing rocky 10_1 budgie graphical login-manager persistence attrs"
           '
 
-      - name: Execute Rocky 10.1 Budgie reboot-persistence smoke
+      - name: Execute Rocky 10.1 Budgie graphical login-manager persistence smoke
         run: |
-          nix build -L .#checks.x86_64-linux.rocky-10_1-budgie-reboot-persistence-test
+          nix build -L .#checks.x86_64-linux.rocky-10_1-budgie-graphical-login-manager-persistence-test
           test -e result
           readlink result
 
@@ -126,4 +130,4 @@ jobs:
         run: |
           END=$(date +%s%N)
           DURATION_MS=$(( (END - JOB_START) / 1000000 ))
-          echo "### rocky-budgie-reboot-persistence-soak completed in ${DURATION_MS}ms" >> "$GITHUB_STEP_SUMMARY"
+          echo "### rocky-budgie-graphical-login-manager-persistence-soak completed in ${DURATION_MS}ms" >> "$GITHUB_STEP_SUMMARY"
