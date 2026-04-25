@@ -1116,6 +1116,7 @@ let
         ${fedora44ConsumerRepoWriteCommand}
 
         dnf install -y --setopt=install_weak_deps=False \
+          --exclude=compat-gpgme124 \
           ${builtins.concatStringsSep " \\\n          " budgieLoginManagerPackages} \
           >"$install_log_path"
 
