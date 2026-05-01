@@ -25,7 +25,7 @@ permissions:
 jobs:
   rocky-budgie-graphical-harness-soak:
     name: Prove Rocky 10.1 Budgie graphical harness target
-    runs-on: nix-vm-test-kvm
+    runs-on: tinyland-nix-kvm
     timeout-minutes: 45
     steps:
       - name: Record start time

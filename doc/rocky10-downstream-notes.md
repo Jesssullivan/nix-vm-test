@@ -72,8 +72,10 @@ image state until we explicitly enable more repositories.
 
 ## Current Fork Proof Surface
 
-- the fork runs a bounded Rocky 10.1 VM smoke on the `nix-vm-test-kvm`
-  lane through `.github/workflows/kvm-soak.yml`
+- the fork runs bounded Rocky 10.1 VM smokes on the shared
+  `tinyland-nix-kvm` capability lane when this repo is enrolled for that
+  runner scope; the historical `nix-vm-test-kvm` label is no longer a live ARC
+  scale-set target
 - that proof remains the base terminal-first contract: the published
   `rocky-10_1-multi-user-test` harness boots and reaches `multi-user.target`
   under KVM

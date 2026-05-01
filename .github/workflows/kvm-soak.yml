@@ -8,8 +8,8 @@ permissions:
 
 jobs:
   kvm-soak:
-    name: Prove nix-vm-test-kvm runner contract
-    runs-on: nix-vm-test-kvm
+    name: Prove tinyland-nix-kvm runner contract
+    runs-on: tinyland-nix-kvm
     timeout-minutes: 30
     steps:
       - name: Record start time

@@ -27,7 +27,7 @@ permissions:
 jobs:
   rocky-budgie-graphical-soak:
     name: Prove Rocky 10.1 Budgie graphical target
-    runs-on: nix-vm-test-kvm
+    runs-on: tinyland-nix-kvm
     timeout-minutes: 60
     steps:
       - name: Record start time
