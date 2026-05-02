@@ -25,7 +25,7 @@ permissions:
 jobs:
   rocky-graphical-bootstrap-soak:
     name: Prove Rocky 10.1 graphical bootstrap target
-    runs-on: nix-vm-test-kvm
+    runs-on: tinyland-nix-kvm
     timeout-minutes: 45
     steps:
       - name: Record start time
@@ -34,6 +34,9 @@ jobs:
 
       - uses: actions/checkout@v6
       - uses: DeterminateSystems/determinate-nix-action@v3
+
+      - name: Configure Tinyland Nix cache
+        run: bash .github/scripts/configure-tinyland-nix-cache.sh
 
       - name: Verify runner environment
         run: |
@@ -52,11 +55,13 @@ jobs:
         run: |
           test -n "${ATTIC_SERVER:-}"
           test -n "${ATTIC_CACHE:-}"
+          test -n "${ATTIC_PUBLIC_KEY:-}"
           test -n "${BAZEL_REMOTE_CACHE:-}"
           test -n "${NIX_CONFIG:-}"
           printf 'ATTIC_SERVER=%s\n' "$ATTIC_SERVER"
           printf 'ATTIC_CACHE=%s\n' "$ATTIC_CACHE"
           printf 'BAZEL_REMOTE_CACHE=%s\n' "$BAZEL_REMOTE_CACHE"
+          nix config show | grep -F "${ATTIC_SERVER%/}/${ATTIC_CACHE}"
 
       - name: Verify QEMU KVM acceleration
         run: |
@@ -89,9 +94,7 @@ jobs:
 
       - name: Execute Rocky 10.1 graphical bootstrap smoke
         run: |
-          nix build -L .#checks.x86_64-linux.rocky-10_1-graphical-bootstrap-test
-          test -e result
-          readlink result
+          bash .github/scripts/run-kvm-nix-build.sh .#checks.x86_64-linux.rocky-10_1-graphical-bootstrap-test
 
       - name: Report timing
         if: always()

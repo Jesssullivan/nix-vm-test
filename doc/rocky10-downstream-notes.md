@@ -72,8 +72,10 @@ image state until we explicitly enable more repositories.
 
 ## Current Fork Proof Surface
 
-- the fork runs a bounded Rocky 10.1 VM smoke on the `nix-vm-test-kvm`
-  lane through `.github/workflows/kvm-soak.yml`
+- the fork runs bounded Rocky 10.1 VM smokes on the shared
+  `tinyland-nix-kvm` capability lane when this repo is enrolled for that
+  runner scope; the historical `nix-vm-test-kvm` label is no longer a live ARC
+  scale-set target
 - that proof remains the base terminal-first contract: the published
   `rocky-10_1-multi-user-test` harness boots and reaches `multi-user.target`
   under KVM
@@ -147,6 +149,24 @@ image state until we explicitly enable more repositories.
   - it does not prove graphical login-manager persistence, bare-metal display
     readiness, GPU acceleration, hotplug, mixed-DPI policy, or broader
     `rockies` workload maturity
+- the fork now also exposes a bounded
+  `rocky-10_1-budgie-graphical-login-manager-persistence-test` target intended
+  to publish the first stronger graphical login-manager follow-on after reboot
+  persistence
+- that Budgie graphical login-manager persistence target is still deliberately
+  bounded:
+  - it reuses the same Rocky 10.1 plus Fedora 44 consumer-repo install path as
+    the first Budgie graphical, relaunch-persistence, and reboot-persistence
+    targets, then adds `sddm`
+  - it enables `sddm.service`, persists `graphical.target` as the default boot
+    target, reboots the guest, and proves both `sddm.service` and
+    `display-manager.service` come back after the restart
+  - it also proves the Budgie wayland session descriptor still points at
+    `startbudgielabwc` after the reboot, which keeps the login-manager surface
+    anchored to the same Budgie session contract already proven headlessly
+  - it does not prove greeter interaction, autologin, display-manager driven
+    desktop session execution, bare-metal display readiness, GPU acceleration,
+    hotplug, mixed-DPI policy, or broader `rockies` workload maturity
 
 ## Source Pointers
 
