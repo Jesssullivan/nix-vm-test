@@ -19,6 +19,9 @@ jobs:
       - uses: actions/checkout@v6
       - uses: DeterminateSystems/determinate-nix-action@v3
 
+      - name: Configure Tinyland Nix cache
+        run: bash .github/scripts/configure-tinyland-nix-cache.sh
+
       - name: Verify runner environment
         run: |
           echo "Runner: ${{ runner.name }}"
@@ -36,11 +39,13 @@ jobs:
         run: |
           test -n "${ATTIC_SERVER:-}"
           test -n "${ATTIC_CACHE:-}"
+          test -n "${ATTIC_PUBLIC_KEY:-}"
           test -n "${BAZEL_REMOTE_CACHE:-}"
           test -n "${NIX_CONFIG:-}"
           printf 'ATTIC_SERVER=%s\n' "$ATTIC_SERVER"
           printf 'ATTIC_CACHE=%s\n' "$ATTIC_CACHE"
           printf 'BAZEL_REMOTE_CACHE=%s\n' "$BAZEL_REMOTE_CACHE"
+          nix config show | grep -F "${ATTIC_SERVER%/}/${ATTIC_CACHE}"
 
       - name: Verify QEMU KVM acceleration
         run: |
