@@ -93,7 +93,7 @@ jobs:
 
       - name: Execute Rocky 10.1 Budgie graphical harness smoke
         run: |
-          nix build -L .#checks.x86_64-linux.rocky-10_1-budgie-graphical-harness-test
+          nix build -L --max-jobs 1 --cores 2 .#checks.x86_64-linux.rocky-10_1-budgie-graphical-harness-test
           test -e result
           readlink result
 
