@@ -124,9 +124,7 @@ jobs:
 
       - name: Execute Rocky 10.1 Budgie graphical login-manager persistence smoke
         run: |
-          nix build -L --max-jobs 1 --cores 1 .#checks.x86_64-linux.rocky-10_1-budgie-graphical-login-manager-persistence-test
-          test -e result
-          readlink result
+          bash .github/scripts/run-kvm-nix-build.sh .#checks.x86_64-linux.rocky-10_1-budgie-graphical-login-manager-persistence-test
 
       - name: Report timing
         if: always()

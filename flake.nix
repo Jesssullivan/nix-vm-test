@@ -14,7 +14,16 @@
       ];
       forAllLibSystems = f: lib.genAttrs systemsWithLib f;
       mkPkgs = system: import nixpkgs {
-        overlays = [ self.overlays.default ];
+        overlays = [
+          (final: prev: {
+            libguestfs = prev.libguestfs.overrideAttrs (old: {
+              configureFlags = (old.configureFlags or [ ]) ++ [
+                "--disable-perl"
+              ];
+            });
+          })
+          self.overlays.default
+        ];
         localSystem = system;
       };
       system = "x86_64-linux";

@@ -74,9 +74,7 @@ jobs:
 
       - name: Execute Rocky 10.1 KVM smoke
         run: |
-          nix build -L --max-jobs 1 --cores 1 .#checks.x86_64-linux.rocky-10_1-multi-user-test
-          test -e result
-          readlink result
+          bash .github/scripts/run-kvm-nix-build.sh .#checks.x86_64-linux.rocky-10_1-multi-user-test
 
       - name: Report timing
         if: always()
