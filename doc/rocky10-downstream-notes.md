@@ -72,6 +72,14 @@ image state until we explicitly enable more repositories.
 
 ## Current Fork Proof Surface
 
+- the fork exposes a bounded `packages.x86_64-linux.kvm-prewarm-closure`
+  output for trusted cache prewarm jobs that need the fork's exact KVM
+  dependency graph without invoking a full VM harness
+- the prewarm package includes this fork's overridden `libguestfs`
+  (`--disable-perl`), `guestfs-tools`, `qemu`, and `qemu_kvm`
+- the individual package outputs are also exposed as
+  `kvm-prewarm-libguestfs`, `kvm-prewarm-guestfs-tools`,
+  `kvm-prewarm-qemu`, and `kvm-prewarm-qemu-kvm` for narrower cache evidence
 - the fork runs bounded Rocky 10.1 VM smokes on the shared
   `tinyland-nix-kvm` capability lane when this repo is enrolled for that
   runner scope; the historical `nix-vm-test-kvm` label is no longer a live ARC

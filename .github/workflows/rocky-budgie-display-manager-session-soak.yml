@@ -107,6 +107,9 @@ jobs:
               budgie_display_manager_session =
                 builtins.hasAttr "rocky-10_1-budgie-display-manager-session-test"
                 flake.checks."x86_64-linux";
+              kvm_prewarm_closure =
+                builtins.hasAttr "kvm-prewarm-closure"
+                flake.packages."x86_64-linux";
             }
           '
           nix eval --raw --impure --expr '
@@ -122,6 +125,7 @@ jobs:
               && builtins.hasAttr "rocky-10_1-budgie-reboot-persistence-test" flake.checks."x86_64-linux"
               && builtins.hasAttr "rocky-10_1-budgie-graphical-login-manager-persistence-test" flake.checks."x86_64-linux"
               && builtins.hasAttr "rocky-10_1-budgie-display-manager-session-test" flake.checks."x86_64-linux"
+              && builtins.hasAttr "kvm-prewarm-closure" flake.packages."x86_64-linux"
             then "rocky-10.1-budgie-display-manager-session-ok"
             else builtins.throw "missing rocky 10_1 budgie display-manager session attrs"
           '
