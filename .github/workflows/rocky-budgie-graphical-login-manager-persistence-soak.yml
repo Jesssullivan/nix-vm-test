@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - ".github/workflows/rocky-budgie-graphical-login-manager-persistence-soak.yml"
+      - ".github/scripts/run-kvm-nix-build.sh"
       - "doc/rocky10-downstream-notes.md"
       - "flake.nix"
       - "rocky/**"
@@ -14,6 +15,7 @@ on:
       - main
     paths:
       - ".github/workflows/rocky-budgie-graphical-login-manager-persistence-soak.yml"
+      - ".github/scripts/run-kvm-nix-build.sh"
       - "doc/rocky10-downstream-notes.md"
       - "flake.nix"
       - "rocky/**"
