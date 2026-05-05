@@ -55,7 +55,16 @@ print_runner_diagnostics() {
 
 print_runner_diagnostics "before nix build"
 
-nix build -L --max-jobs 1 --cores 1 "$attr" "$@"
+# KVM soaks rely on workflow-level and in-guest timeouts. Do not let a
+# runner-local Nix daemon timeout kill the VM test builder mid-reboot.
+nix build \
+  --option timeout 0 \
+  --option max-silent-time 0 \
+  -L \
+  --max-jobs 1 \
+  --cores 1 \
+  "$attr" \
+  "$@"
 status=$?
 if [ "$status" -ne 0 ]; then
   print_runner_diagnostics "after failed nix build"

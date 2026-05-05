@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - ".github/workflows/rocky-graphical-bootstrap-soak.yml"
+      - ".github/scripts/run-kvm-nix-build.sh"
       - "flake.nix"
       - "rocky/**"
       - "tests/default.nix"
@@ -13,6 +14,7 @@ on:
       - main
     paths:
       - ".github/workflows/rocky-graphical-bootstrap-soak.yml"
+      - ".github/scripts/run-kvm-nix-build.sh"
       - "flake.nix"
       - "rocky/**"
       - "tests/default.nix"
