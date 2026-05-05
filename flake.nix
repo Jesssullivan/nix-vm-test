@@ -32,6 +32,22 @@
     {
       lib = forAllLibSystems (system: (mkPkgs system).testers.nonNixOSDistros);
 
+      packages.${system} = {
+        kvm-prewarm-libguestfs = pkgs.libguestfs;
+        kvm-prewarm-guestfs-tools = pkgs.guestfs-tools;
+        kvm-prewarm-qemu = pkgs.qemu;
+        kvm-prewarm-qemu-kvm = pkgs.qemu_kvm;
+        kvm-prewarm-closure = pkgs.symlinkJoin {
+          name = "nix-vm-test-kvm-prewarm-closure";
+          paths = [
+            pkgs.libguestfs
+            pkgs.guestfs-tools
+            pkgs.qemu
+            pkgs.qemu_kvm
+          ];
+        };
+      };
+
       checks.${system} = import ./tests {
         package = pkgs.testers.nonNixOSDistros;
         inherit pkgs system;

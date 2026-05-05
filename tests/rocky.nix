@@ -1380,6 +1380,459 @@ let
   budgieGraphicalLoginManagerPersistenceWriteCommand =
     builtins.toJSON
     "python3 -c ${budgieGraphicalLoginManagerPersistenceWriter}";
+  budgieDisplayManagerSessionManifest = builtins.toJSON {
+    target = "rocky-10_1-budgie-display-manager-session-test";
+    kind = "budgie-display-manager-session";
+    predecessor_target =
+      "rocky-10_1-budgie-graphical-login-manager-persistence-test";
+    desktop_package = "budgie-desktop";
+    session_entry = "budgie-session";
+    persistence_service = "budgie-desktop-services";
+    compositor = "labwc";
+    companion_session_package = "labwc-session";
+    portal_backend = "xdg-desktop-portal-wlr";
+    runtime_helpers = [
+      "grim"
+      "slurp"
+      "swaybg"
+      "swayidle"
+      "wlopm"
+    ];
+    login_manager_package = "sddm";
+    login_manager_service = "sddm.service";
+    display_manager_service = "display-manager.service";
+    display_manager_alias_path = "/etc/systemd/system/display-manager.service";
+    graphical_target = "graphical.target";
+    package_set = budgieLoginManagerPackages;
+    epel_release_rpm =
+      "https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm";
+    fedora_release = "44";
+    fedora_repo_path = "/etc/yum.repos.d/fedora44.repo";
+    session_descriptor_path = "/usr/share/wayland-sessions/budgie-desktop.desktop";
+    session_launcher = "startbudgielabwc";
+    session_binary = "budgie-session-binary";
+    proof_user = "budgieproof";
+    autologin_session = "budgie-desktop.desktop";
+    autologin_config_path =
+      "/etc/sddm.conf.d/10-budgie-display-manager-session.conf";
+    session_probe_path =
+      "/var/lib/budgie-display-manager-session/post-reboot-session-probe.json";
+    loginctl_sessions_path =
+      "/var/lib/budgie-display-manager-session/post-reboot-logind-sessions.txt";
+    loginctl_session_details_path =
+      "/var/lib/budgie-display-manager-session/post-reboot-logind-session-details.txt";
+    process_path =
+      "/var/lib/budgie-display-manager-session/post-reboot-budgie-processes.txt";
+    labwc_process_path =
+      "/var/lib/budgie-display-manager-session/post-reboot-labwc-processes.txt";
+    budgie_session_process_path =
+      "/var/lib/budgie-display-manager-session/post-reboot-budgie-session-processes.txt";
+    login_manager_status_path =
+      "/var/lib/budgie-display-manager-session/post-reboot-sddm-status.txt";
+    display_manager_status_path =
+      "/var/lib/budgie-display-manager-session/post-reboot-display-manager-status.txt";
+    journal_path =
+      "/var/lib/budgie-display-manager-session/post-reboot-sddm-journal.txt";
+    current_boundary =
+      "first-rocky-budgie-display-manager-driven-session-via-controlled-sddm-autologin";
+  };
+  budgieDisplayManagerSessionAssertionWriter = pkgs.lib.escapeShellArg ''
+    import json
+
+    with open(
+        "/var/lib/budgie-display-manager-session-summary.json",
+        "r",
+        encoding="utf-8",
+    ) as handle:
+        summary = json.load(handle)
+
+    repo_surface = summary["repo_surface"]
+    package_install = summary["package_install"]
+    desktop_file = summary["desktop_file"]
+    login_manager_probe = summary["login_manager_probe"]
+    autologin_probe = summary["autologin_probe"]
+    session_probe = summary["session_probe"]
+
+    if repo_surface["fedora_release"] != "44":
+        raise SystemExit(f"unexpected Fedora consumer release: {repo_surface['fedora_release']}")
+
+    if not repo_surface["consumer_repo_path_exists"]:
+        raise SystemExit("Fedora consumer repo file was not present after reboot")
+
+    if not package_install["transaction_succeeded"]:
+        raise SystemExit("Budgie display-manager session packages were not present after reboot")
+
+    if "startbudgielabwc" not in desktop_file["exec_line"]:
+        raise SystemExit(f"unexpected desktop file Exec line: {desktop_file['exec_line']!r}")
+
+    if not login_manager_probe["post_reboot_default_target_graphical"]:
+        raise SystemExit("post-reboot default target was not graphical.target")
+
+    if not login_manager_probe["post_reboot_login_manager_active"]:
+        raise SystemExit("post-reboot sddm.service was not active")
+
+    if not login_manager_probe["post_reboot_display_manager_active"]:
+        raise SystemExit("post-reboot display-manager.service was not active")
+
+    if not login_manager_probe["post_reboot_alias_targets_sddm"]:
+        raise SystemExit("post-reboot display-manager.service alias did not point at sddm.service")
+
+    if not autologin_probe["proof_user_exists"]:
+        raise SystemExit("Budgie display-manager proof user was missing")
+
+    if not autologin_probe["autologin_config_exists"]:
+        raise SystemExit("SDDM autologin config was missing")
+
+    if not autologin_probe["autologin_config_targets_budgie"]:
+        raise SystemExit("SDDM autologin config did not target the Budgie session")
+
+    if session_probe["proof_user_session_count"] < 1:
+        raise SystemExit("SDDM did not create a logind session for the proof user")
+
+    if not session_probe["budgie_session_running"]:
+        raise SystemExit("Budgie session process was not running under the proof user")
+
+    if not session_probe["labwc_running"]:
+        raise SystemExit("labwc process was not running under the proof user")
+
+    if not session_probe["display_manager_started_session"]:
+        raise SystemExit("display-manager-driven Budgie session proof did not complete")
+  '';
+  budgieDisplayManagerSessionAssertionCommand =
+    builtins.toJSON "python3 -c ${budgieDisplayManagerSessionAssertionWriter}";
+  budgieDisplayManagerSessionScript = ''
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    manifest_path="''${1:?manifest path required}"
+    phase="''${2:?phase required}"
+    summary_path="''${3:?summary path required}"
+    install_log_path="''${4:?install log path required}"
+
+    harness_dir="$(dirname "$manifest_path")"
+
+    manifest_value() {
+      python3 - "$manifest_path" "$1" <<'PY'
+    import json
+    import sys
+
+    with open(sys.argv[1], "r", encoding="utf-8") as handle:
+        manifest = json.load(handle)
+
+    print(manifest[sys.argv[2]])
+    PY
+    }
+
+    proof_user="$(manifest_value proof_user)"
+    autologin_session="$(manifest_value autologin_session)"
+    autologin_config_path="$(manifest_value autologin_config_path)"
+
+    case "$phase" in
+      pre-reboot)
+        dnf install -y ${builtins.toJSON "https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm"} >/dev/null
+        dnf install -y dnf-plugins-core >/dev/null
+        dnf config-manager --set-enabled crb >/dev/null
+
+        ${fedora44ConsumerRepoWriteCommand}
+
+        dnf install -y --setopt=install_weak_deps=False \
+          --exclude=compat-gpgme124 \
+          ${builtins.concatStringsSep " \\\n          " budgieLoginManagerPackages} \
+          >"$install_log_path"
+
+        if ! id -u "$proof_user" >/dev/null 2>&1; then
+          useradd -m "$proof_user"
+        fi
+        for group in video input; do
+          if getent group "$group" >/dev/null; then
+            usermod -a -G "$group" "$proof_user"
+          fi
+        done
+        passwd -d "$proof_user" >/dev/null 2>&1 || true
+
+        install -d -m 755 "$(dirname "$autologin_config_path")"
+        python3 - "$autologin_config_path" "$proof_user" "$autologin_session" <<'PY'
+    from pathlib import Path
+    import sys
+
+    config_path, proof_user, autologin_session = sys.argv[1:4]
+    Path(config_path).write_text(
+        "\n".join(
+            [
+                "[Autologin]",
+                f"User={proof_user}",
+                f"Session={autologin_session}",
+                "Relogin=false",
+                "",
+                "[Users]",
+                "MinimumUid=1000",
+                "MaximumUid=60000",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    PY
+
+        systemctl set-default graphical.target >/dev/null
+        systemctl enable sddm.service >/dev/null
+        ;;
+      post-reboot)
+        test -s "$install_log_path"
+        test -f /etc/yum.repos.d/fedora44.repo
+        test -f "$autologin_config_path"
+        id -u "$proof_user" >/dev/null
+        ;;
+      *)
+        printf 'unknown display-manager session phase: %s\n' "$phase" >&2
+        exit 1
+        ;;
+    esac
+
+    command -v loginctl >/dev/null
+    command -v pgrep >/dev/null
+    command -v readlink >/dev/null
+    command -v systemctl >/dev/null
+
+    desktop_file="/usr/share/wayland-sessions/budgie-desktop.desktop"
+    test -f "$desktop_file"
+    grep -q '^Exec=.*/startbudgielabwc$' "$desktop_file"
+
+    if [ "$phase" = "post-reboot" ]; then
+      loginctl_sessions_path="$harness_dir/post-reboot-logind-sessions.txt"
+      loginctl_session_details_path="$harness_dir/post-reboot-logind-session-details.txt"
+      process_path="$harness_dir/post-reboot-budgie-processes.txt"
+      labwc_process_path="$harness_dir/post-reboot-labwc-processes.txt"
+      budgie_session_process_path="$harness_dir/post-reboot-budgie-session-processes.txt"
+      login_manager_status_path="$harness_dir/post-reboot-sddm-status.txt"
+      display_manager_status_path="$harness_dir/post-reboot-display-manager-status.txt"
+      journal_path="$harness_dir/post-reboot-sddm-journal.txt"
+
+      ready=0
+      for _ in $(seq 1 90); do
+        loginctl list-sessions --no-legend >"$loginctl_sessions_path" || true
+        pgrep -u "$proof_user" -af 'startbudgielabwc|budgie-session|labwc' >"$process_path" || true
+        pgrep -u "$proof_user" -x labwc >"$labwc_process_path" || true
+        pgrep -u "$proof_user" -af 'budgie-session-binary|budgie-session --builtin|budgie-session' >"$budgie_session_process_path" || true
+        if awk -v user="$proof_user" '$3 == user { found=1 } END { exit found ? 0 : 1 }' "$loginctl_sessions_path" \
+          && test -s "$labwc_process_path" \
+          && test -s "$budgie_session_process_path"
+        then
+          ready=1
+          break
+        fi
+        sleep 2
+      done
+
+      : >"$loginctl_session_details_path"
+      awk -v user="$proof_user" '$3 == user { print $1 }' "$loginctl_sessions_path" | while read -r session_id; do
+        if [ -n "$session_id" ]; then
+          {
+            printf -- '--- session %s ---\n' "$session_id"
+            loginctl show-session "$session_id" || true
+          } >>"$loginctl_session_details_path"
+        fi
+      done
+
+      systemctl status --no-pager sddm.service >"$login_manager_status_path" || true
+      systemctl status --no-pager display-manager.service >"$display_manager_status_path" || true
+      journalctl -b -u sddm.service --no-pager -n 160 >"$journal_path" || true
+
+      systemctl is-active sddm.service >/dev/null
+      systemctl is-active display-manager.service >/dev/null
+      test "$(systemctl get-default)" = "graphical.target"
+      test -L /etc/systemd/system/display-manager.service
+
+      if [ "$ready" -ne 1 ]; then
+        sed -n "1,160p" "$login_manager_status_path" >&2 || true
+        sed -n "1,160p" "$journal_path" >&2 || true
+        sed -n "1,120p" "$loginctl_sessions_path" >&2 || true
+        sed -n "1,120p" "$process_path" >&2 || true
+        exit 1
+      fi
+    fi
+
+    python3 - "$manifest_path" "$phase" "$summary_path" "$install_log_path" <<'PY'
+    import json
+    from pathlib import Path
+    import subprocess
+    import sys
+
+    manifest_path, phase, summary_path, install_log_path = sys.argv[1:5]
+
+    with open(manifest_path, "r", encoding="utf-8") as handle:
+        manifest = json.load(handle)
+
+    def read_lines(path: str, limit: int = 120) -> list[str]:
+        file_path = Path(path)
+        if not file_path.exists():
+            return []
+        with file_path.open("r", encoding="utf-8", errors="replace") as handle:
+            return [line.rstrip("\n") for _, line in zip(range(limit), handle)]
+
+    def run_command(command: list[str]) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            check=False,
+        )
+
+    def probe_installed_package(name: str) -> dict:
+        result = run_command(
+            ["rpm", "-q", "--qf", "%{name}-%{version}-%{release}.%{arch}\n", name]
+        )
+        lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+        return {
+            "name": name,
+            "installed": result.returncode == 0,
+            "matches": lines,
+        }
+
+    desktop_file_path = Path(manifest["session_descriptor_path"])
+    exec_line = ""
+    if desktop_file_path.exists():
+        for line in desktop_file_path.read_text(encoding="utf-8", errors="replace").splitlines():
+            if line.startswith("Exec="):
+                exec_line = line
+
+    installed_package_versions = [
+        probe_installed_package(name) for name in manifest["package_set"]
+    ]
+
+    default_target_result = run_command(["systemctl", "get-default"])
+    login_manager_active_result = run_command(
+        ["systemctl", "is-active", manifest["login_manager_service"]]
+    )
+    display_manager_active_result = run_command(
+        ["systemctl", "is-active", manifest["display_manager_service"]]
+    )
+    alias_path = Path(manifest["display_manager_alias_path"])
+    alias_target = alias_path.readlink().as_posix() if alias_path.is_symlink() else ""
+
+    proof_user = manifest["proof_user"]
+    proof_user_exists = run_command(["id", "-u", proof_user]).returncode == 0
+    autologin_config_path = Path(manifest["autologin_config_path"])
+    autologin_config = (
+        autologin_config_path.read_text(encoding="utf-8", errors="replace")
+        if autologin_config_path.exists()
+        else ""
+    )
+
+    loginctl_sessions = read_lines(manifest["loginctl_sessions_path"])
+    loginctl_details = read_lines(manifest["loginctl_session_details_path"])
+    process_lines = read_lines(manifest["process_path"])
+    labwc_processes = read_lines(manifest["labwc_process_path"])
+    budgie_session_processes = read_lines(manifest["budgie_session_process_path"])
+
+    proof_user_sessions = []
+    for line in loginctl_sessions:
+        fields = line.split()
+        if len(fields) >= 3 and fields[2] == proof_user:
+            proof_user_sessions.append(fields[0])
+
+    summary = {
+        "kind": manifest["kind"],
+        "target": manifest["target"],
+        "predecessor_target": manifest["predecessor_target"],
+        "current_boundary": manifest["current_boundary"],
+        "executed_phase": phase,
+        "repo_surface": {
+            "epel_release_rpm": manifest["epel_release_rpm"],
+            "crb_enabled": True,
+            "fedora_release": manifest["fedora_release"],
+            "consumer_repo_path": manifest["fedora_repo_path"],
+            "consumer_repo_path_exists": Path(manifest["fedora_repo_path"]).exists(),
+        },
+        "desktop_file": {
+            "path": manifest["session_descriptor_path"],
+            "exists": desktop_file_path.exists(),
+            "exec_line": exec_line,
+        },
+        "package_install": {
+            "packages": manifest["package_set"],
+            "transaction_succeeded": all(
+                probe["installed"] for probe in installed_package_versions
+            ),
+            "installed_package_versions": installed_package_versions,
+            "log_excerpt": read_lines(install_log_path),
+        },
+        "login_manager_probe": {
+            "post_reboot_default_target_graphical": (
+                default_target_result.stdout.strip() == manifest["graphical_target"]
+            ),
+            "post_reboot_login_manager_active": login_manager_active_result.returncode == 0,
+            "post_reboot_display_manager_active": display_manager_active_result.returncode == 0,
+            "post_reboot_alias_exists": alias_path.exists(),
+            "post_reboot_alias_is_symlink": alias_path.is_symlink(),
+            "post_reboot_alias_target": alias_target,
+            "post_reboot_alias_targets_sddm": alias_target.endswith("sddm.service"),
+            "login_manager_status_excerpt": read_lines(manifest["login_manager_status_path"]),
+            "display_manager_status_excerpt": read_lines(
+                manifest["display_manager_status_path"]
+            ),
+            "journal_excerpt": read_lines(manifest["journal_path"]),
+        },
+        "autologin_probe": {
+            "proof_user": proof_user,
+            "proof_user_exists": proof_user_exists,
+            "autologin_config_path": manifest["autologin_config_path"],
+            "autologin_config_exists": autologin_config_path.exists(),
+            "autologin_session": manifest["autologin_session"],
+            "autologin_config_targets_budgie": (
+                f"User={proof_user}" in autologin_config
+                and f"Session={manifest['autologin_session']}" in autologin_config
+            ),
+            "autologin_config_excerpt": autologin_config.splitlines()[:80],
+        },
+        "session_probe": {
+            "proof_user_sessions": proof_user_sessions,
+            "proof_user_session_count": len(proof_user_sessions),
+            "loginctl_sessions_excerpt": loginctl_sessions,
+            "loginctl_session_details_excerpt": loginctl_details,
+            "process_excerpt": process_lines,
+            "labwc_processes": labwc_processes,
+            "budgie_session_processes": budgie_session_processes,
+            "labwc_running": bool(labwc_processes),
+            "budgie_session_running": any(
+                "budgie-session-binary" in line or "budgie-session" in line
+                for line in budgie_session_processes
+            ),
+            "display_manager_started_session": bool(
+                proof_user_sessions and labwc_processes and budgie_session_processes
+            ),
+        },
+    }
+
+    Path(manifest["session_probe_path"]).write_text(
+        json.dumps(summary["session_probe"], indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    with open(summary_path, "w", encoding="utf-8") as handle:
+        json.dump(summary, handle, indent=2)
+        handle.write("\n")
+    PY
+  '';
+  budgieDisplayManagerSessionWriter = pkgs.lib.escapeShellArg ''
+    from pathlib import Path
+
+    harness_dir = Path("/var/lib/budgie-display-manager-session")
+    harness_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+    (harness_dir / "manifest.json").write_text(
+        ${builtins.toJSON budgieDisplayManagerSessionManifest} + "\n",
+        encoding="utf-8",
+    )
+    script_path = harness_dir / "run-display-manager-session-test.sh"
+    script_path.write_text(
+        ${builtins.toJSON budgieDisplayManagerSessionScript},
+        encoding="utf-8",
+    )
+    script_path.chmod(0o755)
+  '';
+  budgieDisplayManagerSessionWriteCommand =
+    builtins.toJSON "python3 -c ${budgieDisplayManagerSessionWriter}";
   budgieGraphicalHarnessManifest = builtins.toJSON {
     target = "rocky-10_1-budgie-graphical-harness-test";
     kind = "budgie-graphical-harness";
@@ -1876,6 +2329,67 @@ let
       vm.succeed("sed -n '1,120p' /var/lib/budgie-graphical-login-manager-persistence/post-reboot-sddm-status.txt || true")
     '';
   }).sandboxed;
+  budgieDisplayManagerSessionTest = runner: (runner {
+    sharedDirs = {};
+    testScript = ''
+      vm.start(allow_reboot = True)
+      vm.wait_for_unit("multi-user.target")
+      vm.succeed("command -v python3")
+      vm.succeed(${budgieDisplayManagerSessionWriteCommand})
+      vm.succeed("test -f /var/lib/budgie-display-manager-session/manifest.json")
+      vm.succeed("test -x /var/lib/budgie-display-manager-session/run-display-manager-session-test.sh")
+      vm.succeed("grep -q 'rocky-10_1-budgie-graphical-login-manager-persistence-test' /var/lib/budgie-display-manager-session/manifest.json")
+      vm.succeed("""
+        timeout 1200 bash -lc '
+          set -euo pipefail
+          /var/lib/budgie-display-manager-session/run-display-manager-session-test.sh \
+            /var/lib/budgie-display-manager-session/manifest.json \
+            pre-reboot \
+            /var/lib/budgie-display-manager-session-summary.json \
+            /var/lib/budgie-display-manager-session-install.log || {
+              status=$?
+              sed -n "1,200p" /var/lib/budgie-display-manager-session-install.log || true
+              exit "$status"
+            }
+        '
+      """)
+      vm.reboot()
+      vm.wait_for_unit("graphical.target")
+      vm.wait_for_unit("sddm.service")
+      vm.succeed("test -f /var/lib/budgie-display-manager-session/manifest.json")
+      vm.succeed("test -x /var/lib/budgie-display-manager-session/run-display-manager-session-test.sh")
+      vm.succeed("""
+        timeout 900 bash -lc '
+          set -euo pipefail
+          /var/lib/budgie-display-manager-session/run-display-manager-session-test.sh \
+            /var/lib/budgie-display-manager-session/manifest.json \
+            post-reboot \
+            /var/lib/budgie-display-manager-session-summary.json \
+            /var/lib/budgie-display-manager-session-install.log || {
+              status=$?
+              sed -n "1,200p" /var/lib/budgie-display-manager-session-install.log || true
+              sed -n "1,160p" /var/lib/budgie-display-manager-session/post-reboot-sddm-status.txt || true
+              sed -n "1,160p" /var/lib/budgie-display-manager-session/post-reboot-sddm-journal.txt || true
+              sed -n "1,120p" /var/lib/budgie-display-manager-session/post-reboot-logind-sessions.txt || true
+              sed -n "1,120p" /var/lib/budgie-display-manager-session/post-reboot-budgie-processes.txt || true
+              exit "$status"
+            }
+        '
+      """)
+      vm.succeed("test -s /var/lib/budgie-display-manager-session-summary.json")
+      vm.succeed("test -s /var/lib/budgie-display-manager-session-install.log")
+      vm.succeed("test -s /var/lib/budgie-display-manager-session/post-reboot-logind-sessions.txt")
+      vm.succeed("test -s /var/lib/budgie-display-manager-session/post-reboot-budgie-processes.txt")
+      vm.succeed("grep -q 'rocky-10_1-budgie-graphical-login-manager-persistence-test' /var/lib/budgie-display-manager-session-summary.json")
+      vm.succeed("grep -q 'budgieproof' /var/lib/budgie-display-manager-session-summary.json")
+      vm.succeed("grep -q 'sddm.service' /var/lib/budgie-display-manager-session-summary.json")
+      vm.succeed("grep -q 'budgie-session' /var/lib/budgie-display-manager-session-summary.json")
+      vm.succeed(${budgieDisplayManagerSessionAssertionCommand})
+      vm.succeed("cat /var/lib/budgie-display-manager-session-summary.json")
+      vm.succeed("sed -n '1,120p' /var/lib/budgie-display-manager-session/post-reboot-logind-session-details.txt || true")
+      vm.succeed("sed -n '1,120p' /var/lib/budgie-display-manager-session/post-reboot-sddm-status.txt || true")
+    '';
+  }).sandboxed;
   budgieGraphicalHarnessTest = runner: (runner {
     sharedDirs = {};
     testScript = ''
@@ -1959,6 +2473,8 @@ runTestOnEveryImage multiUserTest //
   "10_1-budgie-reboot-persistence-test" = budgieRebootPersistenceTest lib.rocky."10_1";
   "10_1-budgie-graphical-login-manager-persistence-test" =
     budgieGraphicalLoginManagerPersistenceTest lib.rocky."10_1";
+  "10_1-budgie-display-manager-session-test" =
+    budgieDisplayManagerSessionTest lib.rocky."10_1";
   "10_1-budgie-graphical-harness-test" = budgieGraphicalHarnessTest lib.rocky."10_1";
   "10_1-budgie-session-gate-test" = budgieSessionGateTest lib.rocky."10_1";
 } //

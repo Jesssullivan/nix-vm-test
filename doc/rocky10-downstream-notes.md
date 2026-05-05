@@ -72,6 +72,14 @@ image state until we explicitly enable more repositories.
 
 ## Current Fork Proof Surface
 
+- the fork exposes a bounded `packages.x86_64-linux.kvm-prewarm-closure`
+  output for trusted cache prewarm jobs that need the fork's exact KVM
+  dependency graph without invoking a full VM harness
+- the prewarm package includes this fork's overridden `libguestfs`
+  (`--disable-perl`), `guestfs-tools`, `qemu`, and `qemu_kvm`
+- the individual package outputs are also exposed as
+  `kvm-prewarm-libguestfs`, `kvm-prewarm-guestfs-tools`,
+  `kvm-prewarm-qemu`, and `kvm-prewarm-qemu-kvm` for narrower cache evidence
 - the fork runs bounded Rocky 10.1 VM smokes on the shared
   `tinyland-nix-kvm` capability lane when this repo is enrolled for that
   runner scope; the historical `nix-vm-test-kvm` label is no longer a live ARC
@@ -167,6 +175,22 @@ image state until we explicitly enable more repositories.
   - it does not prove greeter interaction, autologin, display-manager driven
     desktop session execution, bare-metal display readiness, GPU acceleration,
     hotplug, mixed-DPI policy, or broader `rockies` workload maturity
+- the fork now also exposes a bounded
+  `rocky-10_1-budgie-display-manager-session-test` target intended to publish
+  the first display-manager-driven Budgie session follow-on after login-manager
+  persistence
+- that Budgie display-manager session target is deliberately bounded:
+  - it reuses the same Rocky 10.1 plus Fedora 44 consumer-repo install path as
+    the graphical, reboot-persistence, and login-manager persistence targets
+  - it configures a local `budgieproof` account for controlled SDDM autologin
+    into `/usr/share/wayland-sessions/budgie-desktop.desktop`
+  - it reboots into `graphical.target`, then proves `sddm.service`,
+    `display-manager.service`, the SDDM alias, logind session evidence for the
+    proof user, and Budgie/labwc process evidence under that user
+  - it still does not claim human greeter interaction, autologin policy for the
+    eventual product image, bare-metal display readiness, GPU acceleration,
+    hotplug, mixed-DPI policy, image maturity, or broader `rockies` workload
+    maturity
 
 ## Source Pointers
 
